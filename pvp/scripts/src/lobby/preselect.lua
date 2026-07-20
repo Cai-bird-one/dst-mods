@@ -5,6 +5,147 @@ local function IsRegularLobby()
     return TheNet ~= nil and TheNet:GetServerGameMode() == "survival"
 end
 
+-- [PATCH] 隐藏选人界面原版地形预览/世界预览小窗口，避免与 PVP 选人界面重叠。
+-- 通过递归查找常见命名并隐藏；同时打印未命中名称便于后续精确匹配。
+local TERRAIN_PREVIEW_NAMES = {
+    "world_preview",
+    "server_preview",
+    "map_preview",
+    "terrain_preview",
+    "worldsettings",
+    "server_settings",
+    "world_regen",
+    "preview",
+}
+
+local TERRAIN_PREVIEW_TEXTS = {
+    "地形预览",
+    "world preview",
+    "terrain preview",
+    "预览",
+    "preview",
+}
+
+local function get_widget_text(widget)
+    if widget == nil then
+        return nil
+    end
+    if widget.GetString ~= nil then
+        return widget:GetString()
+    elseif widget.text ~= nil and widget.text.GetString ~= nil then
+        return widget.text:GetString()
+    end
+    return nil
+end
+
+local function text_contains_any(str, texts)
+    if str == nil then
+        return false
+    end
+    str = string.lower(tostring(str))
+    for _, t in ipairs(texts) do
+        if str:find(t, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function is_button_like(widget)
+    if widget == nil then
+        return false
+    end
+    -- ImageButton / StandardButton 常见特征。
+    return widget.SetOnClick ~= nil
+        or widget.onclick ~= nil
+        or (widget.name ~= nil and string.find(string.lower(tostring(widget.name)), "button", 1, true))
+end
+
+local function hide_terrain_preview_widget(widget)
+    if widget == nil then
+        return
+    end
+    if widget.Hide ~= nil then
+        widget:Hide()
+    end
+    if widget.SetClickable ~= nil then
+        widget:SetClickable(false)
+    end
+end
+
+local function hide_terrain_preview_recursive(root, depth)
+    if root == nil or depth == nil then
+        depth = 0
+    end
+    if depth > 12 then
+        return false
+    end
+
+    local matched = false
+
+    -- 1. 按控件名匹配常见预览命名。
+    if root.name ~= nil then
+        local name = string.lower(tostring(root.name))
+        for _, pattern in ipairs(TERRAIN_PREVIEW_NAMES) do
+            if name:find(pattern, 1, true) then
+                print("[preselect] hide terrain preview widget by name:", root.name)
+                hide_terrain_preview_widget(root)
+                matched = true
+                break
+            end
+        end
+    end
+
+    -- 2. 如果当前控件自身文本匹配，隐藏自身。
+    if not matched and text_contains_any(get_widget_text(root), TERRAIN_PREVIEW_TEXTS) then
+        print("[preselect] hide terrain preview widget by text:", root.name)
+        hide_terrain_preview_widget(root)
+        matched = true
+    end
+
+    -- 3. 如果当前控件是按钮且任意后代文本匹配，隐藏该按钮。
+    if not matched and is_button_like(root) then
+        local child_text_matched = false
+        local children = root.children
+        if children ~= nil then
+            for _, child in ipairs(children) do
+                if text_contains_any(get_widget_text(child), TERRAIN_PREVIEW_TEXTS)
+                    or hide_terrain_preview_recursive(child, depth + 1) then
+                    child_text_matched = true
+                    break
+                end
+            end
+        end
+        if child_text_matched then
+            print("[preselect] hide terrain preview button:", root.name)
+            hide_terrain_preview_widget(root)
+            matched = true
+        end
+    end
+
+    -- 4. 继续递归非按钮后代。
+    if not matched then
+        local children = root.children
+        if children ~= nil then
+            for _, child in ipairs(children) do
+                if hide_terrain_preview_recursive(child, depth + 1) then
+                    matched = true
+                end
+            end
+        end
+    end
+
+    return matched
+end
+
+local function hide_lobby_terrain_preview(screen)
+    if screen == nil then
+        return
+    end
+    print("[preselect] scanning lobby screen children for terrain preview")
+    hide_terrain_preview_recursive(screen, 0)
+end
+
 local function GetWorldLobby()
     return TheWorld ~= nil
         and TheWorld.net ~= nil
@@ -70,7 +211,8 @@ local function InstallWorldCharacterSelectLobby(inst)
 
     local lobby = inst.components.worldcharacterselectlobby
     lobby.MIN_PLAYERS = GetModConfigData("MIN_PLAYERS") or 2
-    lobby.ADMIN_MODE = GetModConfigData("ADMIN_MODE") or "ALL"
+    -- [PATCH] 强制为“全员准备”模式：管理员点准备不会立刻开局，必须所有玩家都准备才能开始。
+    lobby.ADMIN_MODE = "ALL"
     lobby.LATE_JOIN = GetModConfigData("LATE_JOIN") ~= false
     lobby.KEEP_PAUSED_AFTER_START = GetModConfigData("KEEP_PAUSED_AFTER_START") ~= false
 end
@@ -272,6 +414,12 @@ local function BuildPreselectPanel(owner)
     wrapper.waiting_for_players = panel
     wrapper.focus_forward = panel
     wrapper.title = GetWaitingTitle()
+    panel:SetTitle(wrapper.title)
+
+    -- [PATCH] 隐藏原版 LobbyScreen 顶部偏左的标题，由自定义面板在红蓝队中间显示。
+    if owner ~= nil and owner.panel_title ~= nil then
+        owner.panel_title:Hide()
+    end
 
     local lobby = GetWorldLobby()
     if lobby ~= nil and lobby.ADMIN_MODE == "ADMIN" and CanAdminStart() then
@@ -280,9 +428,8 @@ local function BuildPreselectPanel(owner)
 
     panel.inst:ListenForEvent("player_ready_to_start_dirty", function()
         wrapper.title = GetWaitingTitle()
-        if owner.panel_title ~= nil then
-            owner.panel_title:SetString(wrapper.title)
-        end
+        -- [PATCH] 标题改由自定义面板的中央标题显示，不再依赖原版的 panel_title。
+        panel:SetTitle(wrapper.title)
     end, TheWorld.net)
 
     function wrapper:OnNextButton()
@@ -396,4 +543,27 @@ AddClassPostConstruct("screens/redux/lobbyscreen", function(self)
     })
 
     InstallCountdownStart(self)
+
+    -- [PATCH] 隐藏选人界面原版地形预览，避免与自定义选人面板冲突。
+    -- 部分 mod 的按钮是延迟生成的，因此在构造后多次扫描，并在选人阶段持续轮询。
+    local preview_scan_times = { 0, 0.25, 0.5, 1, 2, 3, 5 }
+    for _, t in ipairs(preview_scan_times) do
+        self.inst:DoTaskInTime(t, function()
+            hide_lobby_terrain_preview(self)
+        end)
+    end
+
+    local preview_scan_task = nil
+    preview_scan_task = self.inst:DoPeriodicTask(1, function()
+        hide_lobby_terrain_preview(self)
+        -- 一旦进入游戏（倒计时结束或世界存在且不再处于选人），停止扫描。
+        if TheWorld ~= nil
+            and TheWorld.net ~= nil
+            and TheWorld.net.components.worldcharacterselectlobby ~= nil
+            and TheWorld.net.components.worldcharacterselectlobby:HasGameStarted() then
+            if preview_scan_task ~= nil then
+                preview_scan_task:Cancel()
+            end
+        end
+    end)
 end)

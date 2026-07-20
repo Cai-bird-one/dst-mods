@@ -27,19 +27,22 @@ local function get_mod_info(modname)
 end
 
 local function is_current_user_admin()
-    if _G.TheNet == nil then
+    -- [PATCH] 世界生成阶段（worldgen_main）没有 TheNet 全局；直接用 rawget 读取，
+    -- 避免 strict.lua 对未声明全局报错。
+    local thenet = _G.rawget(_G, "TheNet")
+    if thenet == nil then
         return false
     end
 
     local ok_userid, userid = _G.pcall(function()
-        return _G.TheNet:GetUserID()
+        return thenet:GetUserID()
     end)
     if not ok_userid or userid == nil then
         return false
     end
 
     local ok_client, client = _G.pcall(function()
-        return _G.TheNet:GetClientTableForUser(userid)
+        return thenet:GetClientTableForUser(userid)
     end)
     return ok_client and client ~= nil and client.admin == true
 end

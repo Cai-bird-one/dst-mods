@@ -220,15 +220,6 @@ local function apply_authoritative_team(inst, attempt)
             end
         else
             team_id, server_ready = team_state.get_server_team(inst.userid)
-            -- [PATCH] 地洞/地面无缝加载：地面注册表尚未就绪时（如下洞返回地面瞬间），
-            -- 回退到组件自身存档的队伍，避免玩家身份短暂变成 OB。
-            if team_id == nil and not server_ready then
-                local loaded_team = get_loaded_component_team(component)
-                if loaded_team ~= nil then
-                    team_id = loaded_team
-                    debug_log.log("team-apply", "surface component mirror", tostring(inst.userid), tostring(team_id))
-                end
-            end
         end
         if team_id ~= nil then
             local source = IsCaveShard() and "entity-mirror" or "world"

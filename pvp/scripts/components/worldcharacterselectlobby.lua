@@ -2,6 +2,8 @@
 --[[ WorldCharacterSelectLobby class definition ]]
 --------------------------------------------------------------------------
 
+local lobby_team_state = require "src/team/lobby_team_state"
+
 return Class(function(self, inst)
 
 --------------------------------------------------------------------------
@@ -192,6 +194,9 @@ local function SetStartServerPaused(paused)
         return
     end
 
+    -- [PATCH] 恢复原版 TheNet:SetServerPaused 实现开局自动暂停。
+    -- 之前曾改为无操作，导致开局自动暂停没有实际效果。
+    -- 注意：该 API 仅应在开局暂停阶段调用，对局进行中调用会触发引擎断言崩溃。
     if paused then
         local ok = true
         if not IsServerPaused() then
@@ -240,7 +245,7 @@ local function SetPlayerReadyToStart(userid, is_ready)
 		for i, v in ipairs(_players_ready_to_start) do
 			if v:value() == userid then
 				_players_ready_to_start[i]:set("")
-				return
+					return
 			end
 		end
 	end
@@ -263,6 +268,8 @@ local function TogglePlayerReadyToStart(userid)
 	end
 	if empty_slot ~= nil then
 		_players_ready_to_start[empty_slot]:set(userid)
+		-- [PATCH] 移除未定义的 UpdateReadyCountNet() 调用；net_string 变更会
+		-- 自动触发 player_ready_to_start_dirty 事件同步准备状态。
 	end
 end
 
@@ -283,6 +290,20 @@ AddUserCommand("playerreadytostart", {
         return _countdowni:value() == COUNTDOWN_INACTIVE and not _lockedforshutdown:value()
     end,
     serverfn = function(params, caller)
+        if caller == nil or caller.userid == nil then
+            return
+        end
+
+        -- [PATCH] 等待区/OB 玩家点准备不生效、不增加准备人数，只有红蓝队玩家可准备。
+        local team = TheWorld.net ~= nil
+            and TheWorld.net._bird_lobby_teams ~= nil
+            and lobby_team_state.normalize(TheWorld.net._bird_lobby_teams[caller.userid])
+            or lobby_team_state.TEAM_WAITING
+        if team == lobby_team_state.TEAM_WAITING
+            or team == lobby_team_state.TEAM_OBSERVER then
+            return
+        end
+
 		TogglePlayerReadyToStart(caller.userid)
     end,
 })
@@ -327,7 +348,8 @@ local function StarTimer(time)
 		TheNet:SetAllowNewPlayersToConnect(false)
 	end
     TheNet:SetIsMatchStarting(true)
-	ClearAllPlayersReadyToStart()
+    -- [PATCH] 不在倒计时开始时清空准备人数，让“已准备 X / Y”在倒计时期间保持可见。
+    -- 准备状态会在玩家重连/断开、返回大厅或选择角色时被清空。
 
 	self.inst:StartWallUpdatingComponent(self)
 end

@@ -262,6 +262,25 @@ local function Install(self)
     self.RefreshPlayersReady = function(widget)
         base_refresh_players_ready(widget)
         RefreshVisibleReady(widget)
+
+        -- [PATCH] 原版 waitingforplayers 会仅在未连接手柄时显示准备按钮；
+        -- 红蓝队玩家强制显示/启用，等待区/OB 玩家隐藏准备按钮。
+        if widget.playerready_checkbox ~= nil then
+            if widget.spawn_countdown_active then
+                widget.playerready_checkbox:Disable()
+                widget.playerready_checkbox:Hide()
+            else
+                local local_userid = TheNet ~= nil and TheNet:GetUserID() or nil
+                local local_team = local_userid ~= nil and lobby_team_state.get(local_userid) or TEAM_WAITING
+                if local_team == TEAM_WAITING or local_team == TEAM_OBSERVER then
+                    widget.playerready_checkbox:Hide()
+                    widget.playerready_checkbox:Disable()
+                else
+                    widget.playerready_checkbox:Enable()
+                    widget.playerready_checkbox:Show()
+                end
+            end
+        end
     end
 
     self.Refresh = function(widget, force)
@@ -284,6 +303,30 @@ local function Install(self)
         UpdateSection(widget.bird_red_section, red)
         UpdateSection(widget.bird_blue_section, blue)
         widget:RefreshPlayersReady()
+    end
+
+    -- [PATCH] 原版 waitingforplayers 在人未满时第一次点准备会弹确认窗，
+    -- 导致等待区玩家点了没反应、不增加准备人数。此处替换为直接发送准备命令。
+    if self.playerready_checkbox ~= nil then
+        self.playerready_checkbox.onclick = function(widget)
+            widget.checked = not widget.checked
+            widget:Disable()
+            widget:Refresh()
+
+            UserCommands.RunUserCommand(
+                "playerreadytostart",
+                { ready = "true" },
+                TheNet:GetClientTableForUser(TheNet:GetUserID())
+            )
+
+            widget.timeout_task = widget.inst:DoTaskInTime(5, function()
+                widget.checked = TheWorld.net ~= nil
+                    and TheWorld.net.components.worldcharacterselectlobby:IsPlayerReadyToStart(TheNet:GetUserID())
+                    or false
+                widget:Enable()
+                widget:Refresh()
+            end)
+        end
     end
 
     self:Refresh(true)

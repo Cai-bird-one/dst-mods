@@ -3,12 +3,6 @@
 -- Low-priority client-only mods are silently temp-disabled for all clients.
 -- Client-only mods whose priority is at least this mod's priority are treated
 -- as unsafe, because they may have already executed before this mod.
---
--- SECURITY NOTE: This file runs on the client. A determined user can modify
--- their local copy of this mod (or disable it) to bypass all checks here.
--- Treat these checks as "best-effort discourage casual cheating", not as a
--- hard security boundary. Server-side validation of gameplay state is still
--- required for anything security-critical.
 
 local PopupDialogScreen = require("screens/redux/popupdialog")
 

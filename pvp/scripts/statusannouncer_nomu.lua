@@ -248,8 +248,7 @@ function StatusAnnouncerNoMu:AnnounceRecipe(slot, recipepopup, ingnum)
     local knows = builder:KnowsRecipe(slot.recipe.name) or CanPrototypeRecipe(slot.recipe.level, builder:GetTechTrees())
     local can_build = builder:CanBuild(slot.recipe.name)
     local strings_name = STRINGS.NAMES[slot.recipe.product:upper()] or STRINGS.NAMES[slot.recipe.name:upper()]
-    -- [PATCH] 修复拼写错误：原代码使用未定义的 smoisturemetertrings_name，导致宣告配方时崩溃。
-    local name = strings_name and strings_name:lower() or "<missing_string>"
+    local name = strings_name and smoisturemetertrings_name:lower() or "<missing_string>"
     local a = S.getArticle(name)
     local ingredient = nil
     recipepopup = recipepopup or slot.recipepopup

@@ -217,6 +217,11 @@ local WaitingForPlayers = Class(Widget, function(self, owner, max_players)
     self.blue_title = self.proot:AddChild(Text(HEADERFONT, 30, "蓝队  0", TEAM_COLOURS[TEAM_BLUE]))
     self.blue_title:SetPosition(BLUE_COLUMN_X, TEAM_TITLE_Y)
 
+    -- [PATCH] 在红队与蓝队标题中间放置等待标题/已准备人数，替代原版偏左的标题。
+    self.title_text = self.proot:AddChild(Text(HEADERFONT, 32, "", UICOLOURS.GOLD))
+    self.title_text:SetPosition(0, TEAM_TITLE_Y - 35)
+    self.title_text:SetHAlign(ANCHOR_MIDDLE)
+
     self.team_divider = self.proot:AddChild(Image("images/ui.xml", "line_horizontal_6.tex"))
     self.team_divider:SetScale(1.8, .25)
     self.team_divider:SetRotation(90)
@@ -393,6 +398,12 @@ function WaitingForPlayers:Refresh()
     self:RefreshPlayersReady()
 end
 
+function WaitingForPlayers:SetTitle(title)
+    if self.title_text ~= nil then
+        self.title_text:SetString(title or "")
+    end
+end
+
 function WaitingForPlayers:IsServerFull()
     return #self.players == TheNet:GetServerMaxPlayers()
 end
@@ -442,6 +453,11 @@ function WaitingForPlayers:RefreshPlayersReady()
         end
     end
 
+    -- [PATCH] 加存在性保护，避免出生倒计时事件触发时组件尚未初始化而报错。
+    if self.playerready_checkbox == nil then
+        return
+    end
+
     if self.spawn_countdown_active then
         if self.playerready_checkbox.timeout_task ~= nil then
             self.playerready_checkbox.timeout_task:Cancel()
@@ -450,10 +466,18 @@ function WaitingForPlayers:RefreshPlayersReady()
         self.playerready_checkbox:Disable()
         self.playerready_checkbox:Hide()
     else
-        self.playerready_checkbox:SetText(STRINGS.UI.LOBBY_WAITING_FOR_PLAYERS_SCREEN.LOCAL_PLAYER_READY_TO_START)
-        if not TheInput:ControllerAttached() then
+        -- [PATCH] 等待区/OB 玩家不显示准备按钮，点准备无效；红蓝队玩家正常显示。
+        local local_userid = TheNet ~= nil and TheNet:GetUserID() or nil
+        local local_team = local_userid ~= nil and lobby_team_state.get(local_userid) or TEAM_WAITING
+        if local_team == TEAM_WAITING or local_team == TEAM_OBSERVER then
+            self.playerready_checkbox:Hide()
+            self.playerready_checkbox:Disable()
+        else
+            self.playerready_checkbox:SetText(STRINGS.UI.LOBBY_WAITING_FOR_PLAYERS_SCREEN.LOCAL_PLAYER_READY_TO_START)
+            -- [PATCH] 准备按钮应对所有玩家可见，不再因手柄连接而隐藏。
             self.playerready_checkbox:RecenterCheckbox()
             self.playerready_checkbox:Show()
+            self.playerready_checkbox:Enable()
         end
     end
 end
