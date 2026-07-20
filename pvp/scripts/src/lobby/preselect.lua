@@ -69,8 +69,6 @@ local function InstallWorldCharacterSelectLobby(inst)
     end
 
     local lobby = inst.components.worldcharacterselectlobby
-    lobby.MIN_PLAYERS = GetModConfigData("MIN_PLAYERS") or 2
-    lobby.ADMIN_MODE = GetModConfigData("ADMIN_MODE") or "ALL"
     lobby.LATE_JOIN = GetModConfigData("LATE_JOIN") ~= false
     lobby.KEEP_PAUSED_AFTER_START = GetModConfigData("KEEP_PAUSED_AFTER_START") ~= false
 end
@@ -231,30 +229,13 @@ local function WrapLoadoutPanel(panel_def)
     end
 end
 
-local function GetReadyCount(lobby)
-    return lobby ~= nil and lobby.CountPlayersReadyToStart ~= nil and lobby:CountPlayersReadyToStart() or 0
-end
-
 local function GetWaitingTitle()
     local lobby = GetWorldLobby()
-    if lobby == nil then
-        return STRINGS.UI.LOBBYSCREEN.WAITING_FOR_PLAYERS_TITLE
+    local ready_count, total_count = 0, 0
+    if lobby ~= nil and lobby.GetPlayingTeamReadyStatus ~= nil then
+        ready_count, total_count = lobby:GetPlayingTeamReadyStatus()
     end
-
-    local mode = lobby.ADMIN_MODE
-    local ready_count = GetReadyCount(lobby)
-    local min_players = lobby.MIN_PLAYERS or 2
-    local player_count = TheNet:GetPlayerCount()
-
-    if mode == "ALL" then
-        return STRINGS.UI.LOBBYSCREEN.WAITING_FOR_PLAYERS_TITLE.." ("..subfmt(STRINGS.UI.LOBBYSCREEN.NUM_PLAYERS_FMT, { num = ready_count, max = math.max(min_players, player_count) })..")"
-    elseif mode == "MIN" then
-        return STRINGS.UI.LOBBYSCREEN.WAITING_FOR_PLAYERS_TITLE.." ("..subfmt(STRINGS.UI.LOBBYSCREEN.NUM_PLAYERS_FMT, { num = ready_count, max = min_players })..")"
-    elseif mode == "ADMIN" then
-        return "Waiting For Admin"
-    end
-
-    return STRINGS.UI.LOBBYSCREEN.WAITING_FOR_PLAYERS_TITLE
+    return string.format("准备 %d/%d", ready_count, total_count)
 end
 
 local function CanAdminStart()
@@ -273,17 +254,21 @@ local function BuildPreselectPanel(owner)
     wrapper.focus_forward = panel
     wrapper.title = GetWaitingTitle()
 
-    local lobby = GetWorldLobby()
-    if lobby ~= nil and lobby.ADMIN_MODE == "ADMIN" and CanAdminStart() then
+    if CanAdminStart() then
         wrapper.next_button_title = STRINGS.UI.LOBBYSCREEN.START
     end
 
-    panel.inst:ListenForEvent("player_ready_to_start_dirty", function()
+    local function RefreshWaitingTitle()
         wrapper.title = GetWaitingTitle()
         if owner.panel_title ~= nil then
             owner.panel_title:SetString(wrapper.title)
         end
-    end, TheWorld.net)
+    end
+
+    panel.inst:ListenForEvent("player_ready_to_start_dirty", RefreshWaitingTitle, TheWorld.net)
+    if TheGlobalInstance ~= nil then
+        panel.inst:ListenForEvent("bird_lobby_teams_dirty", RefreshWaitingTitle, TheGlobalInstance)
+    end
 
     function wrapper:OnNextButton()
         if self.next_button_title ~= nil then

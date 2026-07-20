@@ -273,24 +273,25 @@ local function StartRegenerateCountdown()
     match.reset_task = Schedule(1, Tick)
 end
 
-FinishMatch = function(winner_team, loser_team)
-    if not match.enabled or match.ended or not team_state.is_playing_team(winner_team) then
+FinishMatch = function(winner_team, loser_team, reason)
+    if match.ended or not team_state.is_playing_team(winner_team) then
         return
     end
 
     match.ended = true
     CancelEliminationCountdown(false)
 
-    Announce(
-        string.format("本局结束！%s全员死亡或掉线，%s获胜！", TEAM_NAMES[loser_team], TEAM_NAMES[winner_team]),
-        TEAM_COLOURS[winner_team]
-    )
-    debug_log.log("match", "ended", TEAM_NAMES[winner_team], "winner")
+    local result_message = reason == "surrender"
+        and string.format("本局结束！%s投降，%s获胜！", TEAM_NAMES[loser_team], TEAM_NAMES[winner_team])
+        or string.format("本局结束！%s全员死亡或掉线，%s获胜！", TEAM_NAMES[loser_team], TEAM_NAMES[winner_team])
+    Announce(result_message, TEAM_COLOURS[winner_team])
+    debug_log.log("match", "ended", TEAM_NAMES[winner_team], "winner", reason or "elimination")
 
     if TheWorld ~= nil and TheWorld.PushEvent ~= nil then
         TheWorld:PushEvent("bird_pvp_match_ended", {
             winner_team = winner_team,
             loser_team = loser_team,
+            reason = reason or "elimination",
         })
     end
 
@@ -800,3 +801,43 @@ AddPrefabPostInit("forest_network", function(network)
         Schedule(0, EnsureMatchStarted)
     end)
 end)
+
+-- Surrender voting shares the round roster and settlement pipeline without
+-- exposing the mutable match tables themselves.
+GLOBAL.BIRD_PVP_MATCH_END = {
+    is_active = function()
+        return match.started and not match.ended
+    end,
+    get_player_team = function(userid)
+        return GetRosterTeam(userid)
+    end,
+    get_surrender_voters = function(team_id)
+        team_id = team_state.normalize(team_id)
+        if not match.started or match.ended or not team_state.is_playing_team(team_id) then
+            return nil
+        end
+
+        local voters = {}
+        for userid in pairs(match.roster[team_id]) do
+            local state = match.players[userid]
+            if state ~= nil
+                and state.team_id == team_id
+                and state.mode ~= "offline" then
+                -- Integer half-vote units avoid floating point comparisons:
+                -- alive/migrating = 1 vote, dead = 0.5 vote.
+                voters[userid] = state.alive and 2 or 1
+            end
+        end
+        return voters
+    end,
+    finish_surrender = function(loser_team)
+        loser_team = team_state.normalize(loser_team)
+        if not match.started or match.ended or not team_state.is_playing_team(loser_team) then
+            return false
+        end
+
+        local winner_team = loser_team == TEAM_RED and TEAM_BLUE or TEAM_RED
+        FinishMatch(winner_team, loser_team, "surrender")
+        return match.ended
+    end,
+}

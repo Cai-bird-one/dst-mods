@@ -2,6 +2,8 @@
 --[[ WorldCharacterSelectLobby class definition ]]
 --------------------------------------------------------------------------
 
+local team_state = require("src/team/lobby_team_state")
+
 return Class(function(self, inst)
 
 --------------------------------------------------------------------------
@@ -20,9 +22,6 @@ local COUNTDOWN_INACTIVE = 255
 --Public
 self.inst = inst
 
--- various parts of the code need to access these config vars
-self.MIN_PLAYERS = 2
-self.ADMIN_MODE = "ALL"
 self.LATE_JOIN = true
 self.KEEP_PAUSED_AFTER_START = true
 
@@ -39,6 +38,8 @@ local _start_server_pause_active = false
 local _countdown_finished_handled = false
 local _start_pause_released = false
 local _start_pause_pending = false
+local _suppress_auto_start = false
+local _try_start_task = nil
 
 --Network
 local _countdowni = net_byte(inst.GUID, "worldcharacterselectlobby._countdowni", "spawncharacterdelaydirty")
@@ -292,9 +293,11 @@ AddUserCommand("playerreadytostart", {
 --------------------------------------------------------------------------
 
 local function ClearAllPlayersReadyToStart()
+	_suppress_auto_start = true
 	for i, v in ipairs(_players_ready_to_start) do
 		v:set("")
 	end
+	_suppress_auto_start = false
 end
 
 local function CalcLobbyUpTime()
@@ -361,37 +364,57 @@ local function CountPlayersReadyToStart()
 	return count
 end
 
+local function CountPlayingTeamReadyStatus()
+    local ready_users = {}
+    for _, netvar in ipairs(_players_ready_to_start) do
+        local userid = netvar:value()
+        if userid ~= "" then
+            ready_users[userid] = true
+        end
+    end
+
+    local ready_count = 0
+    local total_count = 0
+    for _, client in ipairs(GetPlayersClientTable()) do
+        local team_id = nil
+        local teams_ready = false
+        if _ismastersim then
+            team_id, teams_ready = team_state.get_server_team(client.userid)
+        elseif team_state.is_remote_ready() then
+            team_id = team_state.get(client.userid)
+            teams_ready = true
+        end
+
+        if teams_ready and team_state.is_playing_team(team_id) then
+            total_count = total_count + 1
+            if ready_users[client.userid] then
+                ready_count = ready_count + 1
+            end
+        end
+    end
+
+    return ready_count, total_count
+end
+
 local function TryStartCountdown()
-	if not self:IsAllowingCharacterSelect() then
+	if _suppress_auto_start or not self:IsAllowingCharacterSelect() then
 		return
 	end
 
--- case
-	local modeActions = {
-		["ALL"] = function()
-			local clients = GetPlayersClientTable()
-			if CountPlayersReadyToStart() < #clients or CountPlayersReadyToStart() < self.MIN_PLAYERS then
-				return
-			end
-			StarTimer(COUNTDOWN_TIME)
-		end,
-		["MIN"] = function()
-			local clients = GetPlayersClientTable()
-			if CountPlayersReadyToStart() < self.MIN_PLAYERS then
-				return
-			end
-			StarTimer(COUNTDOWN_TIME)
-		end,
-		["ADMIN"] = function()
-			-- Do nothing because admin start is triggered elsewhere
-		end,
-	}
-	local func = modeActions[self.ADMIN_MODE]
-	if (func) then
-		func()
-	else
-		print("Error: Unknown Mode: ", self.ADMIN_MODE)
-	end
+    local ready_count, total_count = CountPlayingTeamReadyStatus()
+    if total_count > 0 and ready_count >= total_count then
+        StarTimer(COUNTDOWN_TIME)
+    end
+end
+
+local function QueueTryStartCountdown()
+    if _try_start_task ~= nil then
+        return
+    end
+    _try_start_task = inst:DoTaskInTime(0, function()
+        _try_start_task = nil
+        TryStartCountdown()
+    end)
 end
 
 local function OnRequestLobbyCharacter(world, data)
@@ -523,7 +546,8 @@ if _ismastersim then
 
     --Register events
     inst:ListenForEvent("ms_requestedlobbycharacter", OnRequestLobbyCharacter, _world)
-    inst:ListenForEvent("player_ready_to_start_dirty", TryStartCountdown)
+    inst:ListenForEvent("player_ready_to_start_dirty", QueueTryStartCountdown)
+    inst:ListenForEvent("bird_lobby_teams_dirty", QueueTryStartCountdown, _world)
     inst:ListenForEvent("ms_clientauthenticationcomplete", OnLobbyClientConnected, _world)
     inst:ListenForEvent("ms_clientdisconnected", OnLobbyClientDisconnected, _world)
     inst:ListenForEvent("ms_playerspawn", OnLobbyPlayerEnteredWorld, _world)
@@ -583,6 +607,10 @@ end
 -- Simple wrapper of the local function to expose it as a public function
 function self:CountPlayersReadyToStart()
 	return CountPlayersReadyToStart()
+end
+
+function self:GetPlayingTeamReadyStatus()
+    return CountPlayingTeamReadyStatus()
 end
 
 -- client will need to know if the game has started (e.g. so they go to the game instead of the lobby)

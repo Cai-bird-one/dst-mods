@@ -11,6 +11,7 @@ description =
     "\n- 红蓝双方使用独立队伍聊天，上下洞后仍可与队友交流" ..
     "\n- 地图显示自己和队友的位置，红蓝玩家脚下显示队伍颜色圈" ..
     "\n- 按Tab打开玩家列表，可查看红队、蓝队、OB和等待玩家" ..
+    "\n- 红蓝队员可在暂停菜单发起投降投票；存活计1票、死亡计0.5票，赞成票须严格大于反对票的两倍" ..
     "\n- 支持队内快捷宣告，科技书效果仅与队友共享" ..
     "\n\n【OB使用】" ..
     "\n- 选择OB后不会参与战斗，可自由观察比赛" ..
@@ -24,7 +25,7 @@ description =
     "\n\n【连接提示】" ..
     "\n- 当前为测试版本；更新后请完整重启游戏和服务器"
 author = "乔尔,冷泠,蔡鸟bird"
-version = "1.0beta.17"
+version = "1.0beta.19"
 priority = 9007199254740991
 
 forumthread = ""
@@ -168,38 +169,6 @@ configuration_options =
         default = true,
     },
     {
-        name = "ADMIN_MODE",
-        label = "开局条件",
-        hover = "决定什么时候开始游戏。",
-        options = {
-            {description = "全员准备", data = "ALL", hover = ""},
-            {description = "达到最低人数", data = "MIN", hover = ""},
-            {description = "管理员控制", data = "ADMIN", hover = ""},
-        },
-        default = "ALL",
-    },
-    {
-        name = "MIN_PLAYERS",
-        label = "最低人数",
-        hover = "开始游戏前至少需要多少名玩家准备。",
-        options = {
-            {description = "1", data = 1, hover = ""},
-            {description = "2", data = 2, hover = ""},
-            {description = "3", data = 3, hover = ""},
-            {description = "4", data = 4, hover = ""},
-            {description = "5", data = 5, hover = ""},
-            {description = "6", data = 6, hover = ""},
-            {description = "8", data = 8, hover = ""},
-            {description = "10", data = 10, hover = ""},
-            {description = "12", data = 12, hover = ""},
-            {description = "16", data = 16, hover = ""},
-            {description = "24", data = 24, hover = ""},
-            {description = "32", data = 32, hover = ""},
-            {description = "64", data = 64, hover = ""},
-        },
-        default = 1,
-    },
-    {
         name = "LATE_JOIN",
         label = "允许中途加入",
         hover = "游戏开始后是否允许新玩家继续连接。",
@@ -229,4 +198,3 @@ configuration_options =
         },
         default = true,
     },}
-

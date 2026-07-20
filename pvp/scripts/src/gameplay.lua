@@ -3,3 +3,4 @@
 modimport("scripts/src/gameplay/balance.lua")
 modimport("scripts/src/gameplay/early_game.lua")
 modimport("scripts/src/gameplay/match_end.lua")
+modimport("scripts/src/gameplay/surrender_vote.lua")
