@@ -619,7 +619,13 @@ _countdowni:set(COUNTDOWN_INACTIVE)
 --Register network variable sync events
 inst:ListenForEvent("spawncharacterdelaydirty", OnCountdownDirty)
 inst:DoTaskInTime(0, RefreshLobbyClockPause)
-inst:ListenForEvent("playeractivated", OnLobbyPlayerEnteredWorld, _world)
+-- playeractivated is a client-side activation event. A dedicated server has
+-- no local player, so start-pause must be armed from the server join event.
+if _ismastersim then
+    inst:ListenForEvent("ms_playerjoined", OnLobbyPlayerEnteredWorld, _world)
+else
+    inst:ListenForEvent("playeractivated", OnLobbyPlayerEnteredWorld, _world)
+end
 
 if _ismastersim then
     TheNet:SetIsMatchStarting(false) --Reset flag in case it's invalid
