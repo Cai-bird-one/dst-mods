@@ -25,7 +25,7 @@ description =
     "\n\n【连接提示】" ..
     "\n- 当前为测试版本；更新后请完整重启游戏和服务器"
 author = "乔尔,冷泠,蔡鸟bird"
-version = "1.0beta.19"
+version = "1.0beta.20"
 priority = 9007199254740991
 
 forumthread = ""
@@ -179,14 +179,19 @@ configuration_options =
         default = true,
     },
     {
-        name = "KEEP_PAUSED_AFTER_START",
-        label = "开始后暂停一次",
-        hover = "开始游戏并生成首个玩家后自动暂停一次，需要管理员手动继续。",
+        name = "START_PAUSE_DURATION",
+        label = "开局等待时间",
+        hover = "首个玩家生成后暂停指定时间再自动开始；管理员可以提前开始游戏。",
         options = {
-            {description = "开启", data = true, hover = ""},
-            {description = "关闭", data = false, hover = ""},
+            {description = "无开局暂停", data = 0, hover = ""},
+            {description = "10 秒", data = 10, hover = ""},
+            {description = "20 秒", data = 20, hover = ""},
+            {description = "30 秒", data = 30, hover = ""},
+            {description = "40 秒", data = 40, hover = ""},
+            {description = "50 秒", data = 50, hover = ""},
+            {description = "60 秒", data = 60, hover = ""},
         },
-        default = true,
+        default = 30,
     },
     {
         name = "shadowprotector_change",

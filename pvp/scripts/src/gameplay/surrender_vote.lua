@@ -10,10 +10,6 @@ local TEAM_NAMES = {
     [TEAM_RED] = "红队",
     [TEAM_BLUE] = "蓝队",
 }
-local TEAM_COLOURS = {
-    [TEAM_RED] = { 1, 0, 0, 1 },
-    [TEAM_BLUE] = { 25 / 255, 88 / 255, 1, 1 },
-}
 local ALL_VOTED_DELAY = 2
 
 local active_vote = nil
@@ -47,12 +43,6 @@ local function GetVoteTime()
         return GetStaticTime()
     end
     return GetTimeRealSeconds()
-end
-
-local function Announce(message, colour)
-    if TheNet ~= nil and TheNet.Announce ~= nil then
-        TheNet:Announce(message, colour)
-    end
 end
 
 local function GetMatchAPI()
@@ -238,18 +228,8 @@ local function ResolveVote()
     if passed then
         local api = GetMatchAPI()
         if api == nil or api.finish_surrender == nil or not api.finish_surrender(team_id) then
-            Announce(team_name .. "投降投票已通过，但当前比赛无法结算。")
+            debug_log.log("surrender", "settlement unavailable", team_name)
         end
-    else
-        Announce(
-            string.format(
-                "%s投降投票未通过（赞成 %s 票，反对 %s 票）。",
-                team_name,
-                protocol.format_units(yes_units),
-                protocol.format_units(no_units)
-            ),
-            TEAM_COLOURS[team_id]
-        )
     end
 end
 
@@ -310,14 +290,6 @@ local function StartVote(userid, starter_name)
         finish_task = nil,
     }
 
-    Announce(
-        string.format(
-            "%s发起投降投票，请在 %d 秒内投票（存活 1 票，死亡 0.5 票；赞成票须严格大于反对票的两倍）。",
-            TEAM_NAMES[team_id],
-            protocol.VOTE_DURATION
-        ),
-        TEAM_COLOURS[team_id]
-    )
     debug_log.log("surrender", "started", TEAM_NAMES[team_id], tostring(userid))
     BroadcastState()
     active_vote.tick_task = Schedule(1, TickVote)

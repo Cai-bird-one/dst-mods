@@ -1,6 +1,16 @@
 local UserCommands = require "usercommands"
 local Widget = require "widgets/widget"
 
+local START_PAUSE_DURATIONS = {
+    [0] = true,
+    [10] = true,
+    [20] = true,
+    [30] = true,
+    [40] = true,
+    [50] = true,
+    [60] = true,
+}
+
 local function IsRegularLobby()
     return TheNet ~= nil and TheNet:GetServerGameMode() == "survival"
 end
@@ -70,7 +80,8 @@ local function InstallWorldCharacterSelectLobby(inst)
 
     local lobby = inst.components.worldcharacterselectlobby
     lobby.LATE_JOIN = GetModConfigData("LATE_JOIN") ~= false
-    lobby.KEEP_PAUSED_AFTER_START = GetModConfigData("KEEP_PAUSED_AFTER_START") ~= false
+    local pause_duration = tonumber(GetModConfigData("START_PAUSE_DURATION"))
+    lobby.START_PAUSE_DURATION = START_PAUSE_DURATIONS[pause_duration] and pause_duration or 30
 end
 
 AddPrefabPostInit("forest_network", InstallWorldCharacterSelectLobby)

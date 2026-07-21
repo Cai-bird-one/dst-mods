@@ -2,6 +2,7 @@
 local team_state = require("src/team/lobby_team_state")
 local player_state = require("src/team/player_state")
 local protocol = require("src/gameplay/surrender_protocol")
+local ImageButton = require("widgets/imagebutton")
 
 local TEAM_NAMES = {
     [team_state.TEAM_RED] = "红队",
@@ -136,6 +137,37 @@ AddClassPostConstruct("widgets/controls", function(controls)
     end
     dialog._bird_surrender_installed = true
 
+    local close_button = dialog.dialogroot:AddChild(ImageButton(
+        "images/global_redux.xml",
+        "close.tex"
+    ))
+    close_button:SetNormalScale(0.6)
+    close_button:SetFocusScale(0.66)
+    close_button:SetImageNormalColour(0.9, 0.9, 0.9, 1)
+    close_button:SetHoverText(STRINGS.UI.HELP.CLOSE)
+    close_button:Hide()
+
+    local function PositionCloseButton()
+        local fill_dist = dialog.num_options > 0
+            and dialog.num_options * dialog.bg.filler_size
+            or 0
+        close_button:SetPosition(
+            150,
+            0.5 * fill_dist + 0.82 * dialog.bg.start_cap_size,
+            0
+        )
+    end
+
+    close_button:SetOnClick(function()
+        if not dialog._bird_surrender_visible then
+            return
+        end
+        dialog._bird_surrender_dismissed_serial = dialog._bird_surrender_serial
+        dialog._bird_surrender_visible = false
+        close_button:Hide()
+        dialog:HideDialog()
+    end)
+
     local function BuildOptionData(data)
         return {
             name = "bird_surrender",
@@ -155,7 +187,7 @@ AddClassPostConstruct("widgets/controls", function(controls)
         local selection = index
         local native_onclick = button.onclick
         button:SetOnClick(function()
-            if not dialog._bird_surrender_active then
+            if not dialog._bird_surrender_visible then
                 if native_onclick ~= nil then
                     native_onclick()
                 end
@@ -179,11 +211,17 @@ AddClassPostConstruct("widgets/controls", function(controls)
         local data = ReadVoteState(controls.owner)
         if data == nil then
             if dialog._bird_surrender_active then
+                local was_visible = dialog._bird_surrender_visible
                 dialog._bird_surrender_active = false
+                dialog._bird_surrender_visible = false
                 dialog._bird_surrender_serial = nil
+                dialog._bird_surrender_dismissed_serial = nil
                 dialog._bird_surrender_selection = nil
                 dialog._bird_surrender_canvote = false
-                dialog:HideDialog()
+                close_button:Hide()
+                if was_visible then
+                    dialog:HideDialog()
+                end
             end
             return
         end
@@ -191,11 +229,19 @@ AddClassPostConstruct("widgets/controls", function(controls)
         local option_data = BuildOptionData(data)
         if not dialog._bird_surrender_active or dialog._bird_surrender_serial ~= data.serial then
             dialog._bird_surrender_active = true
+            dialog._bird_surrender_visible = true
             dialog._bird_surrender_serial = data.serial
+            dialog._bird_surrender_dismissed_serial = nil
             dialog._bird_surrender_selection = nil
             dialog:ShowDialog(option_data)
+            PositionCloseButton()
+            close_button:Show()
+        elseif dialog._bird_surrender_dismissed_serial == data.serial then
+            return
         else
             dialog:UpdateOptions(option_data)
+            PositionCloseButton()
+            close_button:Show()
         end
 
         dialog:UpdateTimer(math.max(0, data.remaining or 0))
@@ -206,6 +252,14 @@ AddClassPostConstruct("widgets/controls", function(controls)
             dialog._bird_surrender_canvote
         )
     end
+
+    dialog.inst:ListenForEvent("showvotedialog", function()
+        if dialog._bird_surrender_visible then
+            dialog._bird_surrender_dismissed_serial = dialog._bird_surrender_serial
+            dialog._bird_surrender_visible = false
+            close_button:Hide()
+        end
+    end, TheWorld)
 
     local network = TheWorld ~= nil and TheWorld.net or nil
     if network ~= nil then

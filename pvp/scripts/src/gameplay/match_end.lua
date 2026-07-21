@@ -14,10 +14,17 @@ local TEAM_NAMES = {
     [TEAM_RED] = "红队",
     [TEAM_BLUE] = "蓝队",
 }
+local PARTICIPANT_MODES = {
+    alive = true,
+    dead = true,
+    migrating = true,
+    disconnected = true,
+    offline = true,
+}
 
 local ELIMINATION_COUNTDOWN_SECONDS = 10
 local REGENERATE_DELAY_SECONDS = 10
-local MIGRATION_GRACE_SECONDS = 30
+local DISCONNECT_GRACE_SECONDS = 4 * 60
 local SHARD_RPC_NAMESPACE = "bird_pvp_match"
 local SHARD_RPC_PLAYER_STATE = "player_state"
 local SHARD_RPC_VICTORY = "victory"
@@ -42,6 +49,7 @@ local match = {
 }
 
 local local_players = {}
+local local_disconnect_tokens = {}
 local local_victory_played = false
 local EnsureMatchStarted
 local EvaluateMatch
@@ -379,34 +387,63 @@ local function SetParticipantState(userid, team_id, mode, source)
     end
 
     source = tostring(source or "unknown")
-    mode = tostring(mode or "offline")
+    mode = tostring(mode or "disconnected")
+    if not PARTICIPANT_MODES[mode] then
+        mode = "disconnected"
+    end
     local current = match.players[userid]
 
-    -- Ignore a late death/disconnect from the shard the player already left.
-    if (mode == "dead" or mode == "offline")
+    -- Ignore a late terminal/disconnect report from the shard the player
+    -- already left. Destination state is authoritative once it has arrived.
+    if (mode == "dead" or mode == "disconnected" or mode == "migrating" or mode == "offline")
         and current ~= nil
         and current.source ~= source
-        and current.source ~= "connected" then
+        and current.source ~= "connected"
+        and current.mode ~= "migrating" then
         debug_log.log("match", "stale state ignored", tostring(userid), mode, source, current.source)
         return
     end
 
+    -- Once dead, disconnecting or moving between shards must not disturb an
+    -- elimination countdown. Only an explicit alive report can revive them.
+    if mode == "disconnected" and current ~= nil and not current.alive then
+        return
+    end
+
+    if mode == "disconnected"
+        and current ~= nil
+        and current.mode == "disconnected"
+        and current.source == source then
+        return
+    end
+
     local revision = current ~= nil and (current.revision or 0) + 1 or 1
+    local alive = mode == "alive" or mode == "migrating"
+    if mode == "disconnected" then
+        alive = current == nil or current.alive == true
+    end
     match.players[userid] = {
         team_id = team_id,
         mode = mode,
-        alive = mode == "alive" or mode == "migrating",
+        alive = alive,
         source = source,
         revision = revision,
     }
     debug_log.log("match", "state", tostring(userid), TEAM_NAMES[team_id], mode, source)
 
-    if mode == "migrating" then
-        Schedule(MIGRATION_GRACE_SECONDS, function()
+    if mode == "migrating" or mode == "disconnected" then
+        debug_log.log(
+            "match",
+            "disconnect grace",
+            tostring(userid),
+            mode,
+            tostring(DISCONNECT_GRACE_SECONDS)
+        )
+        Schedule(DISCONNECT_GRACE_SECONDS, function()
             local state = match.players[userid]
             if state ~= nil
                 and state.revision == revision
-                and state.mode == "migrating"
+                and state.mode == mode
                 and state.source == source then
                 SetParticipantState(userid, team_id, "offline", source)
             end
@@ -447,6 +484,10 @@ local function ReportLocalPlayer(player, forced_mode)
     if player == nil or not player:IsValid() or not IsValidUserid(player.userid) then
         return
     end
+
+    -- An entity on this shard means any earlier local disconnect candidate is
+    -- stale, even if its team mirror has not finished becoming ready yet.
+    local_disconnect_tokens[player.userid] = nil
 
     if IsAuthorityShard() then
         EnsureMatchStarted()
@@ -704,18 +745,39 @@ local function OnLocalPlayerDisconnected(_, data)
         return
     end
 
+    local token = {}
+    local_disconnect_tokens[userid] = token
+
     local cached = local_players[userid]
     if cached ~= nil and cached.mode == "migrating" then
+        local_disconnect_tokens[userid] = nil
         return
     end
 
     Schedule(0.5, function()
+        if local_disconnect_tokens[userid] ~= token then
+            return
+        end
+
         local state = local_players[userid]
+        if state ~= nil and state.mode == "migrating" then
+            local_disconnect_tokens[userid] = nil
+            return
+        end
+        if state ~= nil and state.mode == "dead" then
+            local_disconnect_tokens[userid] = nil
+            return
+        end
+
         local team_id = state ~= nil and state.team_id or GetRosterTeam(userid)
         if team_state.is_playing_team(team_id) then
-            SendPlayerState(userid, team_id, "offline")
+            local_players[userid] = {
+                team_id = team_id,
+                mode = "disconnected",
+            }
+            SendPlayerState(userid, team_id, "disconnected")
         end
-        local_players[userid] = nil
+        local_disconnect_tokens[userid] = nil
     end)
 end
 

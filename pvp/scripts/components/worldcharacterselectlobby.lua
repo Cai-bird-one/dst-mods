@@ -23,7 +23,7 @@ local COUNTDOWN_INACTIVE = 255
 self.inst = inst
 
 self.LATE_JOIN = true
-self.KEEP_PAUSED_AFTER_START = true
+self.START_PAUSE_DURATION = 30
 
 --Private
 local _world = TheWorld
@@ -38,8 +38,11 @@ local _start_server_pause_active = false
 local _countdown_finished_handled = false
 local _start_pause_released = false
 local _start_pause_pending = false
+local _start_pause_countdown_task = nil
+local _start_pause_countdown_remaining = nil
+local _game_start_announced = false
 local _suppress_auto_start = false
-local _try_start_task = nil
+local TryStartCountdown
 
 --Network
 local _countdowni = net_byte(inst.GUID, "worldcharacterselectlobby._countdowni", "spawncharacterdelaydirty")
@@ -214,8 +217,89 @@ local function SetStartServerPaused(paused)
     end
 end
 
+local function CancelStartPauseCountdown()
+    if _start_pause_countdown_task ~= nil then
+        _start_pause_countdown_task:Cancel()
+        _start_pause_countdown_task = nil
+    end
+    _start_pause_countdown_remaining = nil
+end
+
+local function AnnounceStartPause(message)
+    if TheNet ~= nil and TheNet.Announce ~= nil then
+        TheNet:Announce(message)
+    end
+end
+
+local function AnnounceGameStarted(reason)
+    if _game_start_announced then
+        return
+    end
+    _game_start_announced = true
+    AnnounceStartPause(reason == "admin" and "管理员已开始游戏。" or "游戏已开始。")
+end
+
+local function ReleaseStartPause(reason)
+    CancelStartPauseCountdown()
+    _start_pause_pending = false
+    _start_pause_released = true
+    SetStartServerPaused(false)
+    RefreshLobbyClockPause()
+
+    if reason == "admin" or reason == "automatic" then
+        AnnounceGameStarted(reason)
+    end
+end
+
+local function StartPauseCountdownTick()
+    _start_pause_countdown_task = nil
+
+    if _start_pause_countdown_remaining == nil then
+        return
+    end
+
+    if not _start_server_pause_active or not IsServerPaused() then
+        ReleaseStartPause("admin")
+        return
+    end
+
+    _start_pause_countdown_remaining = _start_pause_countdown_remaining - 1
+    if _start_pause_countdown_remaining <= 0 then
+        ReleaseStartPause("automatic")
+        return
+    end
+
+    if _start_pause_countdown_remaining <= 5
+        or _start_pause_countdown_remaining % 10 == 0 then
+        AnnounceStartPause(string.format(
+            "游戏将在 %d 秒后自动开始。",
+            _start_pause_countdown_remaining
+        ))
+    end
+
+    _start_pause_countdown_task = _world:DoStaticTaskInTime(1, StartPauseCountdownTick)
+end
+
+local function StartPauseCountdown()
+    CancelStartPauseCountdown()
+    _start_pause_countdown_remaining = math.max(
+        0,
+        math.floor(tonumber(self.START_PAUSE_DURATION) or 0)
+    )
+    if _start_pause_countdown_remaining <= 0 then
+        AnnounceGameStarted("automatic")
+        return
+    end
+    AnnounceStartPause(string.format(
+        "游戏将在 %d 秒后自动开始。",
+        _start_pause_countdown_remaining
+    ))
+    _start_pause_countdown_task = _world:DoStaticTaskInTime(1, StartPauseCountdownTick)
+end
+
 local function ApplyStartPause()
-    _start_pause_pending = self.KEEP_PAUSED_AFTER_START == true
+    CancelStartPauseCountdown()
+    _start_pause_pending = (tonumber(self.START_PAUSE_DURATION) or 0) > 0
     RefreshLobbyClockPause()
 end
 
@@ -285,6 +369,7 @@ AddUserCommand("playerreadytostart", {
     end,
     serverfn = function(params, caller)
 		TogglePlayerReadyToStart(caller.userid)
+        TryStartCountdown()
     end,
 })
 
@@ -319,10 +404,12 @@ local function StarTimer(time)
 	end
 
 	_countdownf = time
+    CancelStartPauseCountdown()
     _start_pause_pending = false
     _start_server_pause_active = false
     _countdown_finished_handled = false
     _start_pause_released = false
+    _game_start_announced = false
     _countdowni:set(math.ceil(time))
     RefreshLobbyClockPause()
 
@@ -396,7 +483,7 @@ local function CountPlayingTeamReadyStatus()
     return ready_count, total_count
 end
 
-local function TryStartCountdown()
+TryStartCountdown = function()
 	if _suppress_auto_start or not self:IsAllowingCharacterSelect() then
 		return
 	end
@@ -405,16 +492,6 @@ local function TryStartCountdown()
     if total_count > 0 and ready_count >= total_count then
         StarTimer(COUNTDOWN_TIME)
     end
-end
-
-local function QueueTryStartCountdown()
-    if _try_start_task ~= nil then
-        return
-    end
-    _try_start_task = inst:DoTaskInTime(0, function()
-        _try_start_task = nil
-        TryStartCountdown()
-    end)
 end
 
 local function OnRequestLobbyCharacter(world, data)
@@ -488,6 +565,10 @@ local function OnLobbyPlayerEnteredWorld()
         if _start_pause_pending then
             _start_pause_pending = false
             SetStartServerPaused(true)
+            StartPauseCountdown()
+        elseif not _start_server_pause_active
+            and _start_pause_countdown_remaining == nil then
+            AnnounceGameStarted("automatic")
         end
     end
     RefreshLobbyClockPause()
@@ -506,7 +587,6 @@ local function OnCountdownDirty()
             ApplyStartPause()
             inst:StopWallUpdatingComponent(self)
             print("[WorldCharacterSelectLobby] Countdown finished")
-            TheNet:Announce("Game Started!")
 
             --Use regular update to poll for when to clear match starting flag
             inst:StartUpdatingComponent(self)
@@ -546,8 +626,8 @@ if _ismastersim then
 
     --Register events
     inst:ListenForEvent("ms_requestedlobbycharacter", OnRequestLobbyCharacter, _world)
-    inst:ListenForEvent("player_ready_to_start_dirty", QueueTryStartCountdown)
-    inst:ListenForEvent("bird_lobby_teams_dirty", QueueTryStartCountdown, _world)
+    inst:ListenForEvent("player_ready_to_start_dirty", TryStartCountdown)
+    inst:ListenForEvent("bird_lobby_teams_dirty", TryStartCountdown, _world)
     inst:ListenForEvent("ms_clientauthenticationcomplete", OnLobbyClientConnected, _world)
     inst:ListenForEvent("ms_clientdisconnected", OnLobbyClientDisconnected, _world)
     inst:ListenForEvent("ms_playerspawn", OnLobbyPlayerEnteredWorld, _world)
@@ -625,14 +705,12 @@ function self:ReleaseStartPause()
         return false
     end
 
-    _start_pause_pending = false
-    _start_pause_released = true
-    SetStartServerPaused(false)
-    RefreshLobbyClockPause()
+    ReleaseStartPause("admin")
     return true
 end
 
 function self:OnRemoveFromEntity()
+    CancelStartPauseCountdown()
     _start_pause_pending = false
     _start_pause_released = true
     SetStartServerPaused(false)
