@@ -19,6 +19,16 @@ modmain.lua
 
 [`init.lua`](../../pvp/scripts/src/init.lua) 读取版本号。版本字符串包含 `beta` 时，设置 `BIRD_PVP_DEBUG = true`，启用 `[BirdPVP]` 调试日志。
 
+## 日志规范
+
+运行时日志统一通过 [`core/debug.lua`](../../pvp/scripts/src/core/debug.lua) 输出，业务模块不要直接调用 `print`:
+
+- `debug_log.log(scope, ...)`: 调试信息，仅在版本号包含 `beta` 时输出。
+- `debug_log.info(scope, ...)`: 正式版也需要保留的运行和安全信息。
+- `debug_log.error(scope, ...)`: 正式版也需要保留的异常信息，前缀末尾包含 `[error]`。
+
+`debug.lua` 是唯一允许直接调用 `print` 的日志后端。新增日志应复用已有 scope；只有职责确实不同的模块才增加新 scope。
+
 ## 加载顺序
 
 [`pvp.lua`](../../pvp/scripts/src/pvp.lua) 的顺序具有依赖意义:

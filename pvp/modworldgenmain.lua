@@ -5,6 +5,7 @@
 -- modmain.lua gets a chance to execute.
 
 local _G = GLOBAL
+local debug_log = require("src/core/debug")
 
 local blocked_client_mods = _G.rawget(_G, "BIRD_BLOCKED_CLIENT_MODS")
 if blocked_client_mods == nil then
@@ -13,9 +14,7 @@ if blocked_client_mods == nil then
 end
 
 local function log(...)
-    if _G.print ~= nil then
-        _G.print("[BirdPVP][client-mod-check]", ...)
-    end
+    debug_log.info("client-mod-check", ...)
 end
 
 local function get_mod_info(modname)

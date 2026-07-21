@@ -27,9 +27,6 @@ local function IsDistOK (other)
 		return false
 	end
 	local dis = player:GetPosition():Dist(other:GetPosition())
-	-- print("dis:"..dis)
-	-- print(player:GetPosition())
-	-- print(other:GetPosition())
 	return dis<=TUNING.DYC_HEALTHBAR_MAXDIST
 end
 
@@ -244,13 +241,11 @@ local function dychbfn()
 		end)
 		inst:ListenForEvent("dychpdirty", function(inst)
 			local hpnew=inst.dychp_net:value()
-			-- print("dychpdirty:"..hpnew)
 			if inst.dychpini==-1 then
 				inst.dychpini=hpnew
 				if not TUNING.DYC_HEALTHBAR_DDON then
 					inst.dychpini=-2
 				end
-				-- print("set dychpini:"..hpnew)
 			end
 			if TUNING.DYC_HEALTHBAR_DDON then
 				
@@ -259,16 +254,13 @@ local function dychbfn()
 					if inst.dychpini>0 then
 						dd:DamageDisplay(inst.dychbowner,{hpOld=inst.dychpini, hpNewDefault=hpnew})
 						inst.dychpini=-2
-						-- print("DamageDisplay inst.dychpini")
 					else
 						dd:DamageDisplay(inst.dychbowner,{hpNewDefault=hpnew})
-						-- print("DamageDisplay!")
 					end
 				end
 			end
 			inst.dychp=hpnew
 			
-			-- print("dychpdirty, dychp:"..inst.dychp.." dychpold:"..inst.dychpold)
 		end)
 		
 		inst.dychpmax=0
@@ -296,9 +288,7 @@ local function dychbfn()
 	inst.dycHbStarted=false
 	
 	inst.OnRemoveEntity=function(inst)
-		-- print("OnRemoveEntity!")
 		if IsDST() and inst.dychbowner and TUNING.DYC_HEALTHBAR_DDON and IsDistOK(inst.dychbowner) then
-			-- print("DamageDisplay in OnRemoveEntity!")
 			local dd=SpawnPrefab("dyc_damagedisplay")
 			dd:DamageDisplay(inst.dychbowner,{hpNewDefault=inst.dychp})
 		end
@@ -437,7 +427,6 @@ local function dychbfn()
 		else
 			timer = 0
 		end
-		-- if owner.prefab=="bearger" then print(timer) end
 		
 		if IsDST() or TUNING.DYC_HEALTHBAR_POSITION==0 then
 		else
@@ -474,7 +463,6 @@ local function DamageDisplay (inst,target,passedData)
 	
 	inst.Transform:SetPosition( ( target:GetPosition() + Vector3(0,GetEntHBHeight(target)*0.65,0) ):Get() )
 	local oldhealth=(passedData and passedData.hpOld) or (not IsDST() and target.components.health.currenthealth) or (target.dychealthbar and target.dychealthbar.dychp) or (health and health:IsDead() and 0) or (passedData and passedData.hpOldDefault) or 0
-	-- print("oldhealth:"..oldhealth)
 	local ison=false
 	local angle=math.random()*360
 	local t=TUNING.DYC_HEALTHBAR_DDDURATION/2
@@ -494,7 +482,6 @@ local function DamageDisplay (inst,target,passedData)
 	
 	inst.dycddtask=inst:DoPeriodicTask(FRAMES,function()
 		if not inst:IsValid() or not target:IsValid()then
-			-- print("not valid:"..target.name)
 			inst.dycddtask:Cancel()
 			inst:Remove()
 			return
@@ -508,7 +495,6 @@ local function DamageDisplay (inst,target,passedData)
 			if ison==false then
 				target.dycddcd=false
 				local newhealth=(passedData and passedData.hpNew) or (not IsDST() and target.components.health.currenthealth) or (target.dychealthbar and target.dychealthbar.dychp) or (health and health:IsDead() and 0) or (passedData and passedData.hpNewDefault) or 0
-				-- print("newhealth:"..newhealth)
 				local amount=newhealth-oldhealth
 				local absamount=math.abs(amount)
 				if absamount<TUNING.DYC_HEALTHBAR_DDTHRESHOLD then
@@ -516,7 +502,6 @@ local function DamageDisplay (inst,target,passedData)
 					inst:Remove()
 					return
 				else
-					-- print("health change:"..amount)
 					ison=true
 					inst.Label:Enable(true)
 					local sign=""

@@ -1,5 +1,7 @@
 -- Loads the quick announce module when the original environment checks pass.
 
+local debug_log = require("src/core/debug")
+
 if not GetModConfigData("quick_announce") then
     return
 end
@@ -36,7 +38,7 @@ if type(base_add_class_post_construct) == "function" then
                 if ok then
                     return result
                 end
-                print("[BirdPVP][wx78-qa-guard]", "post construct", tostring(result))
+                debug_log.error("wx78-qa-guard", "post construct", tostring(result))
                 return false
             end)
         end

@@ -50,6 +50,14 @@ function M.log(scope, ...)
     print(PREFIX .. "[" .. tostring(scope or "debug") .. "]", ...)
 end
 
+function M.info(scope, ...)
+    print(PREFIX .. "[" .. tostring(scope or "info") .. "]", ...)
+end
+
+function M.error(scope, ...)
+    print(PREFIX .. "[" .. tostring(scope or "error") .. "][error]", ...)
+end
+
 function M.team_payload(teams)
     if type(teams) ~= "table" then
         return tostring(teams)

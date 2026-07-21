@@ -251,7 +251,7 @@ local function RegenerateWorld()
         TheNet:SendWorldResetRequestToServer()
     end)
     if not ok then
-        print("[BirdPVP][match] world regeneration failed", tostring(err))
+        debug_log.error("match", "world regeneration failed", tostring(err))
     end
 end
 
@@ -721,7 +721,7 @@ AddUserCommand(USER_COMMAND_NAME, {
 function GLOBAL.c_bird_match_end(enabled)
     local parsed = ParseEnabled(enabled)
     if parsed == nil then
-        print("Usage: c_bird_match_end(true|false)")
+        debug_log.info("match", "Usage: c_bird_match_end(true|false)")
         return false
     end
 

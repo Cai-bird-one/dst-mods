@@ -4,11 +4,13 @@
 -- chip_objectpool/chip_poolindex. Provide a compatibility view and guard the
 -- legacy callbacks so WX-78 HUD creation cannot break character spawn.
 
+local debug_log = require("src/core/debug")
+
 local Guard = rawget(_G, "BIRD_WX78_QUICK_ANNOUNCE_GUARD") or {}
 rawset(_G, "BIRD_WX78_QUICK_ANNOUNCE_GUARD", Guard)
 
 local function log_guard_error(scope, err)
-    print("[BirdPVP][wx78-qa-guard]", scope, tostring(err))
+    debug_log.error("wx78-qa-guard", scope, tostring(err))
 end
 
 local get_module_definition_from_netid

@@ -11,6 +11,7 @@
 -- required for anything security-critical.
 
 local PopupDialogScreen = require("screens/redux/popupdialog")
+local debug_log = require("src/core/debug")
 
 local BIRD_PVP_PRIORITY = 9007199254740991
 local PRIORITY_WARNING_TITLE = "High priority client mod detected"
@@ -144,7 +145,7 @@ local function install_client_mod_loader_hook()
         if is_client_only_mod(modname) then
             blocked_client_mods[modname] = true
             remove_blocked_package_paths(modname)
-            print("[BirdPVP][client-mod-check] blocked client mod load", tostring(modname), tostring(mainfile))
+            debug_log.info("client-mod-check", "blocked client mod load", tostring(modname), tostring(mainfile))
             return true
         end
 
@@ -189,7 +190,7 @@ local function temp_disable_client_mods(mods)
     end
 
     for _, mod in ipairs(mods) do
-        print("[BirdPVP][client-mod-check] temp disable client mod", tostring(mod.modname))
+        debug_log.info("client-mod-check", "temp disable client mod", tostring(mod.modname))
         KnownModIndex:TempDisable(mod.modname)
         disabled_any = true
     end
@@ -269,7 +270,7 @@ local function show_priority_warning_and_leave(violations)
         end
     end
 
-    print("[BirdPVP][client-mod-check] high priority client mod detected", details)
+    debug_log.info("client-mod-check", "high priority client mod detected", details)
 
     if TheFrontEnd ~= nil then
         TheFrontEnd:PushScreen(PopupDialogScreen(PRIORITY_WARNING_TITLE, body, {
