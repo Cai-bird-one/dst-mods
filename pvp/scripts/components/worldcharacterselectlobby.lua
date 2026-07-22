@@ -197,32 +197,6 @@ local function SetStartServerPaused(paused)
         return
     end
 
-    -- Native dedicated-server pausing is rejected unless an admin client is
-    -- connected. Freeze the authoritative simulation directly so automatic
-    -- start pause does not depend on who joins first. Static tasks still run.
-    if TheNet:IsDedicated() then
-        if paused then
-            local ok = TheSim ~= nil and pcall(function()
-                TheSim:SetTimeScale(0)
-            end)
-            _start_server_pause_active = ok == true
-            debug_log.log(
-                "start-pause",
-                "dedicated",
-                _start_server_pause_active and "applied" or "failed"
-            )
-        elseif _start_server_pause_active then
-            _start_server_pause_active = false
-            if TheSim ~= nil then
-                pcall(function()
-                    TheSim:SetTimeScale(1)
-                end)
-            end
-            debug_log.log("start-pause", "dedicated", "released")
-        end
-        return
-    end
-
     if paused then
         local ok = true
         if not IsServerPaused() then
@@ -285,8 +259,7 @@ local function StartPauseCountdownTick()
         return
     end
 
-    if not _start_server_pause_active
-        or (not TheNet:IsDedicated() and not IsServerPaused()) then
+    if not _start_server_pause_active or not IsServerPaused() then
         ReleaseStartPause("admin")
         return
     end
@@ -664,6 +637,7 @@ if _ismastersim then
     inst:ListenForEvent("bird_lobby_teams_dirty", TryStartCountdown, _world)
     inst:ListenForEvent("ms_clientauthenticationcomplete", OnLobbyClientConnected, _world)
     inst:ListenForEvent("ms_clientdisconnected", OnLobbyClientDisconnected, _world)
+    inst:ListenForEvent("ms_playerspawn", OnLobbyPlayerEnteredWorld, _world)
 
 	local clients = GetPlayersClientTable()
 	for _, c in ipairs(clients) do

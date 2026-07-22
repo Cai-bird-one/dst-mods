@@ -24,7 +24,6 @@
 | `team-fx` | 红蓝队脚下队伍圈生成 |
 | `observer-camera` | OB 启用、地图获取、传送 |
 | `client-mod-check` | 本地 MOD 阻止、临时禁用和高优先级违规 |
-| `start-pause` | 专服开局模拟冻结和恢复 |
 | `lobby` | 预选倒计时开始、结束和准备状态输出 |
 | `match` | 比赛参与者、结算、重生世界和异常 |
 | `wx78-qa-guard` | WX-78 快捷宣告兼容保护异常 |
@@ -96,19 +95,11 @@
 - 预选大厅期间的世界时钟暂停。
 - `START_PAUSE_DURATION` 控制的开局暂停和自动开始倒计时。
 
-开局倒计时完成后，首个玩家完全进入世界时只执行一次暂停。触发事件必须使用服务端的 `ms_playerjoined`，不要使用更早的 `ms_playerspawn`: 后者发生在玩家加载流程结束前，后续原版流程可能再次恢复模拟并覆盖暂停。
+开局倒计时完成后，玩家进入世界时尝试执行一次暂停。服务端同时监听 `ms_playerjoined` 和 `ms_playerspawn`，重复事件由内部状态阻止重复启动倒计时。
 
-房主服使用原生 `TheNet:SetServerPaused`。纯专用服务器的原生暂停要求至少有一名管理员在线，因此自动开局暂停不能依赖该接口；专服改为使用 `TheSim:SetTimeScale(0)` 冻结权威模拟，并由 `DoStaticTaskInTime` 继续运行倒计时，到点或管理员提前开始时恢复为 `1`。
+房主服和专用服务器都使用原生 `TheNet:SetServerPaused`。纯专用服务器的原生暂停通常要求至少有一名管理员在线；没有管理员时暂停可能不会生效，逻辑会在检测到服务器仍未暂停后结束本次自动暂停。
 
-专服测试时检查以下 beta 日志:
-
-1. `[BirdPVP][lobby] countdown finished`。
-2. 首个玩家进入后出现 `[BirdPVP][start-pause] dedicated applied`。
-3. 到达配置秒数后出现 `[BirdPVP][start-pause] dedicated released`。
-
-若出现 `failed`，优先检查 `TheSim` 是否可用以及该逻辑是否运行在 master sim。若出现 `applied` 但世界仍运行，检查是否有其他 MOD 调用 `TheSim:SetTimeScale(1)`。若没有 `applied`，检查 `ms_playerjoined` 是否触发以及 `START_PAUSE_DURATION` 是否为 `0`。
-
-开局暂停应只设置一次，可由静态倒计时自动解除，也可由管理员操作 `youxi` 或 `ReleaseStartPause` 提前解除。若解除后再次暂停，搜索 `SetServerPaused`、`SetStartServerPaused`、`SetTimeScale` 和 `ApplyStartPause` 的调用，不要增加周期“保持暂停”任务。
+开局暂停可由静态倒计时自动解除，也可由管理员操作 `youxi` 或 `ReleaseStartPause` 提前解除。若解除后再次暂停，搜索 `SetServerPaused`、`SetStartServerPaused` 和 `ApplyStartPause` 的调用，不要增加周期“保持暂停”任务。
 
 ## 客户端 MOD 检查
 
