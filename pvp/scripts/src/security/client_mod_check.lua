@@ -163,16 +163,43 @@ local function get_enabled_client_mods()
     end
 
     for _, modname in ipairs(KnownModIndex:GetClientModNames()) do
-        if blocked_client_mods[modname]
-            or (KnownModIndex.IsModEnabled ~= nil and KnownModIndex:IsModEnabled(modname))
-        then
-            local modinfo = get_mod_info(modname)
+        local modinfo = get_mod_info(modname)
+        local blocked = blocked_client_mods[modname] == true
+        local configured_enabled = KnownModIndex.IsModEnabled ~= nil
+            and KnownModIndex:IsModEnabled(modname) == true
+        local temp_disabled = KnownModIndex.IsModTempDisabled ~= nil
+            and KnownModIndex:IsModTempDisabled(modname) == true
+        local enabled_any = KnownModIndex.IsModEnabledAny ~= nil
+            and KnownModIndex:IsModEnabledAny(modname) == true
+        local priority = sanitize_priority(modinfo ~= nil and modinfo.priority or nil)
+
+        debug_log.info(
+            "client-mod-check",
+            "client mod scan",
+            "name=" .. get_mod_display_name(modname, modinfo),
+            "modname=" .. tostring(modname),
+            "priority=" .. tostring(priority),
+            "blocked=" .. tostring(blocked),
+            "enabled=" .. tostring(configured_enabled),
+            "temp_disabled=" .. tostring(temp_disabled),
+            "enabled_any=" .. tostring(enabled_any)
+        )
+
+        if blocked or configured_enabled then
             table.insert(enabled, {
                 modname = modname,
                 name = get_mod_display_name(modname, modinfo),
-                priority = sanitize_priority(modinfo ~= nil and modinfo.priority or nil),
+                priority = priority,
+                blocked = blocked,
+                configured_enabled = configured_enabled,
+                temp_disabled = temp_disabled,
+                enabled_any = enabled_any,
             })
         end
+    end
+
+    if #enabled == 0 then
+        debug_log.info("client-mod-check", "active client mod scan", "none")
     end
 
     return enabled
@@ -230,15 +257,33 @@ local function describe_violations(violations)
     local lines = {}
 
     for _, mod in ipairs(violations) do
-        table.insert(lines, string.format("- %s (%s), priority=%s", mod.name, mod.modname, tostring(mod.priority)))
+        table.insert(lines, string.format(
+            "- %s (%s), priority=%s, blocked=%s, enabled=%s, temp_disabled=%s, enabled_any=%s",
+            mod.name,
+            mod.modname,
+            tostring(mod.priority),
+            tostring(mod.blocked),
+            tostring(mod.configured_enabled),
+            tostring(mod.temp_disabled),
+            tostring(mod.enabled_any)
+        ))
     end
 
     return table.concat(lines, "\n")
 end
 
-local function request_server_kick()
+local kick_requested = false
+local function request_server_kick(details)
+    if kick_requested then
+        return true
+    end
+
     if MOD_RPC ~= nil and MOD_RPC.Justice ~= nil and MOD_RPC.Justice.b ~= nil then
-        SendModRPCToServer(MOD_RPC.Justice.b)
+        kick_requested = true
+        local report = tostring(details or "unknown")
+            :gsub("[%c]", " ")
+            :sub(1, 1000)
+        SendModRPCToServer(MOD_RPC.Justice.b, report)
         return true
     end
 
@@ -261,7 +306,7 @@ local function show_priority_warning_and_leave(violations)
             TheFrontEnd:PopScreen()
         end
 
-        request_server_kick()
+        request_server_kick(details)
 
         if DoRestart ~= nil then
             DoRestart(true)
@@ -279,7 +324,7 @@ local function show_priority_warning_and_leave(violations)
                 cb = leave_game,
             },
         }))
-        request_server_kick()
+        request_server_kick(details)
     else
         leave_game()
     end
@@ -293,15 +338,32 @@ AddModRPCHandler("Justice", "a", function(player, userid_hash)
     player.pass_check = true
 end)
 
-AddModRPCHandler("Justice", "b", function(player)
+AddModRPCHandler("Justice", "b", function(player, reported_details)
     if player == nil or player.userid == nil then
         return
     end
 
     local client = TheNet:GetClientTableForUser(player.userid)
     if client ~= nil and client.admin == true then
+        debug_log.info(
+            "client-mod-check",
+            "kick request ignored for admin",
+            tostring(player.userid),
+            tostring(player.name or "")
+        )
         return
     end
+
+    local details = tostring(reported_details or "unknown")
+        :gsub("[%c]", " ")
+        :sub(1, 1000)
+    debug_log.info(
+        "client-mod-check",
+        "client reported high-priority mods",
+        "userid=" .. tostring(player.userid),
+        "name=" .. tostring(player.name or ""),
+        "mods=" .. details
+    )
 
     TheNet:BanForTime(player.userid, 20)
     TheNet:Announce((player.name or player.userid) .. " was kicked for high-priority client mods (20s)")

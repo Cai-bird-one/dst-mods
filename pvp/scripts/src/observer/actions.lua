@@ -60,17 +60,10 @@ local function get_team_colour(team_id)
     return TEAM_COLOURS[team_id] or { 1, 1, 1, 1 }
 end
 
-function M.give_team_item(observer, team_id, prefab)
-    if not is_admin(observer) then
-        return
-    end
-
+function M.give_team_walking_sticks(team_id)
     team_id = team_state.normalize(team_id)
     if team_id ~= team_state.TEAM_RED and team_id ~= team_state.TEAM_BLUE then
-        return
-    end
-    if prefab ~= "walking_stick" then
-        return
+        return 0
     end
 
     local count = 0
@@ -78,7 +71,7 @@ function M.give_team_item(observer, team_id, prefab)
         if player:IsValid() then
             local player_team_id, pending = team_state.get_player_team(player)
             if not pending and player_team_id == team_id then
-                if give_item(player, prefab) then
+                if give_item(player, "walking_stick") then
                     count = count + 1
                 end
             end
@@ -91,6 +84,15 @@ function M.give_team_item(observer, team_id, prefab)
             get_team_colour(team_id)
         )
     end
+    return count
+end
+
+function M.give_team_item(observer, team_id, prefab)
+    if not is_admin(observer) or prefab ~= "walking_stick" then
+        return
+    end
+
+    M.give_team_walking_sticks(team_id)
 end
 
 function M.zhaoji(player)

@@ -194,6 +194,16 @@ configuration_options =
         default = 30,
     },
     {
+        name = "AUTO_WALKING_STICK",
+        label = "少人队自动发木手杖",
+        hover = "开局时记录红蓝队人数，第一天黄昏为人数较少的队伍成员发放木手杖。",
+        options = {
+            {description = "开启", data = true, hover = ""},
+            {description = "关闭", data = false, hover = ""},
+        },
+        default = true,
+    },
+    {
         name = "shadowprotector_change",
         label = "影人修改",
         hover = "老麦影人第一天不会攻击非队友的玩家。",
