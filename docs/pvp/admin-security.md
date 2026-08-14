@@ -40,10 +40,10 @@ OB 动作:
 
 客户端 MOD 策略分为两个加载阶段:
 
-1. [`modworldgenmain.lua`](../../pvp/modworldgenmain.lua) 在服务端调用原生 `KnownModIndex:DisableClientMods(true)`，使服务器列表发布 `client_mods_disabled`。
+1. [`modworldgenmain.lua`](../../pvp/modworldgenmain.lua) 在前端加载高优先级世界生成入口时直接调用原生 `KnownModIndex:DisableClientMods(true)`。该调用不依赖尚未就绪的 `TheNet:GetIsServer()`，也不修改世界配置或 Hook 原版类。
 2. 客户端连接时由原版 `networking.lua` 临时禁用全部 client-only MOD，再重新加载服务器要求的 Bird PVP。
-3. Bird PVP 加载时读取当前用户的 client table。普通玩家保持原生禁用状态；管理员原本启用的 client-only MOD 被追加回当前 `ModManager.mods` 加载队列。
-4. [`client_mod_check.lua`](../../pvp/scripts/src/security/client_mod_check.lua) 只负责控制台权限和加载结果日志，不再二次修改 ModIndex，也不再使用客户端上报执行封禁。
+3. Bird PVP 读取当前用户的 client table。管理员本地 MOD 选项开启且管理员身份已确认时，原本启用的 client-only MOD 可以继续加载或被追加回当前加载队列。
+4. [`client_mod_check.lua`](../../pvp/scripts/src/security/client_mod_check.lua) 负责控制台权限和加载结果日志，不再使用客户端上报执行封禁。
 
 普通玩家:
 
@@ -60,6 +60,7 @@ OB 动作:
 
 ## 已知边界
 
+- 修改后需要完整返回主菜单并重新进入世界，使前端重新加载 `modworldgenmain.lua`。
 - 专服管理员身份在加载时优先读取原生 `GetIsServerAdmin`，再回退到 client table；若日志显示 `administrator reload skipped`，本次连接不会恢复管理员本地 MOD。
 - 管理员增量加载依赖原版 `kleiregistermods` 支持追加环境，更新游戏版本后必须重新测试。
 - 原生 `client_mods_disabled` 可能在连接前显示“客户端 MOD 已禁用”提示，该提示发生在 Bird PVP 加载之前，无法由本 MOD 静默处理。

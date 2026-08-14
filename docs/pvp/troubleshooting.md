@@ -104,7 +104,8 @@
 
 ## 客户端 MOD 检查
 
-- 普通玩家本地 MOD 未加载: 检查服务器日志是否有 `native client mods disabled`，客户端应显示 `temp_disabled=true`、`loaded=false`。
+- 普通玩家本地 MOD 仍被加载: 完整返回主菜单后重新进入世界，前端日志应输出 `native client mods disabled injected=true`。缺失或为 `false` 表示原生状态没有在创建服务器前成功设置。
+- 原生禁本地生效后，普通玩家客户端日志中的本地 MOD 应显示 `temp_disabled=true`、`loaded=false`。
 - 管理员本地 MOD 未恢复: 检查是否输出 `administrator reload skipped`；这表示 Bird PVP 加载时管理员身份尚不可用。
 - 日志显示 `disabled by configuration`: `ADMIN_CLIENT_MODS` 已关闭，属于预期行为。
 - 管理员追加成功: 应依次看到 `administrator client mod queued`、`administrator client mods registered`，进入 HUD 后对应 MOD 应为 `loaded=true`、`admin_reloaded=true`。

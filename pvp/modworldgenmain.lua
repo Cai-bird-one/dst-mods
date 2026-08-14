@@ -1,8 +1,8 @@
 -- Native client-mod policy and administrator reload bridge.
 --
--- Server-required mods survive client_mods_disabled. Bird PVP therefore loads
--- first, then appends an administrator's originally enabled client-only mods
--- to the ModManager queue that is already being processed by the base game.
+-- Set the native policy while this high-priority worldgen entry is loaded by
+-- the front end, before a hosted server is created. Do not gate this on
+-- TheNet:GetIsServer(), because that role is not ready during front-end load.
 
 local _G = GLOBAL
 local debug_log = require("src/core/debug")
@@ -10,6 +10,9 @@ local debug_log = require("src/core/debug")
 local function log(...)
     debug_log.info("client-mod-check", ...)
 end
+
+_G.KnownModIndex:DisableClientMods(true)
+log("native client mods disabled", "injected=true")
 
 local function is_current_user_admin()
     if _G.TheNet == nil then
@@ -34,20 +37,6 @@ local function is_current_user_admin()
         return _G.TheNet:GetClientTableForUser(userid)
     end)
     return ok_client and client ~= nil and client.admin == true
-end
-
-local function enable_native_client_mod_policy()
-    if _G.TheNet == nil
-        or _G.KnownModIndex == nil
-        or _G.KnownModIndex.DisableClientMods == nil
-    then
-        return
-    end
-
-    if _G.TheNet:GetIsServer() then
-        _G.KnownModIndex:DisableClientMods(true)
-        log("native client mods disabled", "server listing enabled")
-    end
 end
 
 local function sanitize_priority(priority)
@@ -177,5 +166,4 @@ local function append_admin_client_mods()
     log("administrator client mods registered", "count=" .. _G.tostring(#added))
 end
 
-enable_native_client_mod_policy()
 append_admin_client_mods()
