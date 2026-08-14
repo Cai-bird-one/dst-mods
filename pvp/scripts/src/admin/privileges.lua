@@ -23,8 +23,4 @@ function M.is_excluded_from_auto_team(client)
     return M.is_lobby_admin(client)
 end
 
-function M.bypasses_client_mod_check()
-    return M.is_local_server_admin()
-end
-
 return M

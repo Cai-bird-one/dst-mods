@@ -1,28 +1,14 @@
--- Early client-mod blocker.
+-- Native client-mod policy and administrator reload bridge.
 --
--- This runs before this mod's modmain, so with the max priority from
--- modinfo.lua it can filter lower-priority client-only mods before their
--- modmain.lua gets a chance to execute.
+-- Server-required mods survive client_mods_disabled. Bird PVP therefore loads
+-- first, then appends an administrator's originally enabled client-only mods
+-- to the ModManager queue that is already being processed by the base game.
 
 local _G = GLOBAL
 local debug_log = require("src/core/debug")
 
-local blocked_client_mods = _G.rawget(_G, "BIRD_BLOCKED_CLIENT_MODS")
-if blocked_client_mods == nil then
-    blocked_client_mods = {}
-    _G.rawset(_G, "BIRD_BLOCKED_CLIENT_MODS", blocked_client_mods)
-end
-
 local function log(...)
     debug_log.info("client-mod-check", ...)
-end
-
-local function get_mod_info(modname)
-    if _G.KnownModIndex == nil or _G.KnownModIndex.GetModInfo == nil then
-        return nil
-    end
-
-    return _G.KnownModIndex:GetModInfo(modname)
 end
 
 local function is_current_user_admin()
@@ -30,10 +16,17 @@ local function is_current_user_admin()
         return false
     end
 
+    if _G.TheNet.GetIsServerAdmin ~= nil then
+        local ok_admin, is_admin = _G.pcall(_G.TheNet.GetIsServerAdmin, _G.TheNet)
+        if ok_admin and is_admin == true then
+            return true
+        end
+    end
+
     local ok_userid, userid = _G.pcall(function()
         return _G.TheNet:GetUserID()
     end)
-    if not ok_userid or userid == nil then
+    if not ok_userid or userid == nil or userid == "" then
         return false
     end
 
@@ -43,118 +36,146 @@ local function is_current_user_admin()
     return ok_client and client ~= nil and client.admin == true
 end
 
-local function is_blocked_client_mod(modname)
-    if modname == nil then
-        return false
-    end
-
-    if is_current_user_admin() then
-        return false
-    end
-
-    if _G.KnownModIndex == nil or _G.KnownModIndex.GetModInfo == nil then
-        return false
-    end
-
-    local modinfo = get_mod_info(modname)
-    return modinfo == nil or modinfo.client_only_mod == true
-end
-
-local function mark_blocked(modname, reason)
-    if modname == nil or blocked_client_mods[modname] then
-        return
-    end
-
-    blocked_client_mods[modname] = true
-    log(reason or "blocked client mod", _G.tostring(modname))
-end
-
-local function path_modname(path)
-    if _G.type(path) ~= "string" then
-        return nil
-    end
-
-    local workshop_id = path:match("workshop%-(%d+)")
-    if workshop_id ~= nil then
-        return "workshop-" .. workshop_id
-    end
-
-    return path:match("[/\\]mods[/\\]([^/\\]+)[/\\]")
-end
-
-local function remove_blocked_package_paths(blocked_modname)
-    if _G.package == nil or _G.type(_G.package.path) ~= "string" then
-        return
-    end
-
-    local kept = {}
-    local changed = false
-
-    for entry in (_G.package.path .. ";"):gmatch("([^;]*);") do
-        local modname = path_modname(entry)
-        local remove = false
-
-        if blocked_modname ~= nil and entry:find(blocked_modname, 1, true) ~= nil then
-            remove = true
-        elseif modname ~= nil and is_blocked_client_mod(modname) then
-            mark_blocked(modname, "removed package path for client mod")
-            remove = true
-        end
-
-        if remove then
-            changed = true
-        else
-            _G.table.insert(kept, entry)
-        end
-    end
-
-    if changed then
-        _G.package.path = _G.table.concat(kept, ";")
-    end
-end
-
-local function install_compatibility_hook()
-    if _G.KnownModIndex == nil
-        or _G.KnownModIndex.IsModCompatibleWithMode == nil
-        or _G.KnownModIndex._bird_client_mod_compatibility_hooked
+local function enable_native_client_mod_policy()
+    if _G.TheNet == nil
+        or _G.KnownModIndex == nil
+        or _G.KnownModIndex.DisableClientMods == nil
     then
         return
     end
 
-    local base_is_mod_compatible = _G.KnownModIndex.IsModCompatibleWithMode
-    _G.KnownModIndex._bird_client_mod_compatibility_hooked = true
-
-    _G.KnownModIndex.IsModCompatibleWithMode = function(self, modname, ...)
-        if is_blocked_client_mod(modname) then
-            mark_blocked(modname, "marked client mod incompatible")
-            return false
-        end
-
-        return base_is_mod_compatible(self, modname, ...)
+    if _G.TheNet:GetIsServer() then
+        _G.KnownModIndex:DisableClientMods(true)
+        log("native client mods disabled", "server listing enabled")
     end
 end
 
-local function install_loader_hook()
-    if _G.ModManager == nil
-        or _G.ModManager.InitializeModMain == nil
-        or _G.ModManager._bird_client_mod_loader_hooked
-    then
-        return
+local function sanitize_priority(priority)
+    if _G.type(priority) == "number" then
+        return priority
     end
+    if _G.type(priority) == "string" then
+        return _G.tonumber(priority) or 0
+    end
+    return 0
+end
 
-    local base_initialize_mod_main = _G.ModManager.InitializeModMain
-    _G.ModManager._bird_client_mod_loader_hooked = true
+local function is_enabled_before_native_disable(modname)
+    local index = _G.KnownModIndex
+    return (index.IsModEnabled ~= nil and index:IsModEnabled(modname) == true)
+        or (index.IsModForceEnabled ~= nil and index:IsModForceEnabled(modname) == true)
+        or (index.IsModTempEnabled ~= nil and index:IsModTempEnabled(modname) == true)
+end
 
-    _G.ModManager.InitializeModMain = function(self, modname, ...)
-        if is_blocked_client_mod(modname) then
-            mark_blocked(modname, "blocked client mod load")
-            remove_blocked_package_paths(modname)
+local function is_already_queued(modname)
+    for _, env in _G.ipairs(_G.ModManager.mods or {}) do
+        if env.modname == modname then
             return true
         end
+    end
+    return false
+end
 
-        return base_initialize_mod_main(self, modname, ...)
+local function get_admin_client_mods()
+    local result = {}
+    local index = _G.KnownModIndex
+    if index == nil or index.GetClientModNames == nil then
+        return result
+    end
+
+    for _, modname in _G.ipairs(index:GetClientModNames() or {}) do
+        local modinfo = index.GetModInfo ~= nil and index:GetModInfo(modname) or nil
+        if modinfo ~= nil
+            and modinfo.client_only_mod == true
+            and is_enabled_before_native_disable(modname)
+            and not is_already_queued(modname) then
+            result[#result + 1] = {
+                modname = modname,
+                modinfo = modinfo,
+                priority = sanitize_priority(modinfo.priority),
+            }
+        end
+    end
+
+    _G.table.sort(result, function(a, b)
+        if a.priority == b.priority then
+            return _G.tostring(a.modname) < _G.tostring(b.modname)
+        end
+        return a.priority > b.priority
+    end)
+    return result
+end
+
+local function remove_added_environments(added)
+    local added_set = {}
+    for _, env in _G.ipairs(added) do
+        added_set[env] = true
+    end
+    for index = #_G.ModManager.mods, 1, -1 do
+        if added_set[_G.ModManager.mods[index]] then
+            _G.table.remove(_G.ModManager.mods, index)
+        end
     end
 end
 
-install_compatibility_hook()
-install_loader_hook()
+local function append_admin_client_mods()
+    if _G.TheNet == nil
+        or not _G.TheNet:GetIsClient()
+        or _G.TheNet:GetIsServer()
+        or _G.ModManager == nil
+        or _G.ModManager.worldgen
+    then
+        return
+    end
+
+    if GetModConfigData("ADMIN_CLIENT_MODS") ~= true then
+        log("administrator reload skipped", "disabled by configuration")
+        return
+    end
+
+    if not is_current_user_admin() then
+        log("administrator reload skipped", "admin identity unavailable or false")
+        return
+    end
+
+    local candidates = get_admin_client_mods()
+    if #candidates == 0 then
+        log("administrator reload", "no enabled client mods")
+        return
+    end
+
+    local added = {}
+    for _, candidate in _G.ipairs(candidates) do
+        local modname = candidate.modname
+        if _G.KnownModIndex.LoadModConfigurationOptions ~= nil then
+            _G.KnownModIndex:LoadModConfigurationOptions(modname, true)
+        end
+
+        local env = _G.CreateEnvironment(modname, false)
+        env.modinfo = candidate.modinfo
+        _G.table.insert(_G.ModManager.mods, env)
+        added[#added + 1] = env
+        log(
+            "administrator client mod queued",
+            "modname=" .. _G.tostring(modname),
+            "priority=" .. _G.tostring(candidate.priority)
+        )
+    end
+
+    local ok, error_message = _G.pcall(_G.kleiregistermods, added)
+    if not ok then
+        remove_added_environments(added)
+        debug_log.error("client-mod-check", "administrator registration failed", _G.tostring(error_message))
+        return
+    end
+
+    local reloaded = _G.rawget(_G, "BIRD_ADMIN_RELOADED_CLIENT_MODS") or {}
+    for _, env in _G.ipairs(added) do
+        reloaded[env.modname] = true
+    end
+    _G.rawset(_G, "BIRD_ADMIN_RELOADED_CLIENT_MODS", reloaded)
+    log("administrator client mods registered", "count=" .. _G.tostring(#added))
+end
+
+enable_native_client_mod_policy()
+append_admin_client_mods()

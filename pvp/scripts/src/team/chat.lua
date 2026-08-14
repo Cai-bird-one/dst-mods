@@ -3,8 +3,17 @@ local TEAM_CHAT_PREFIX = "/d"
 local TEAM_ONE_COLOUR = { 1, 0, 0, 1 }
 local TEAM_TWO_COLOUR = { 25 / 255, 88 / 255, 1, 1 }
 local OBSERVER_COLOUR = { 1, 1, 1, 1 }
+local RPC_NAMESPACE = "bird_team_chat"
+local MOD_RPC_SEND = "send"
+local CLIENT_RPC_RECEIVE = "receive"
+local SHARD_RPC_FORWARD = "forward"
+local debug_log = require("src/core/debug")
 local observer_privileges = require("src/observer/privileges")
 local team_state = require("src/team/lobby_team_state")
+local directed_team_message = false
+local delivered_message_ids = {}
+local delivered_message_order = {}
+local next_message_sequence = 0
 
 local function can_view_team_chat(player)
     local fn = observer_privileges.can_view_team_chat or observer_privileges.is_observer
@@ -219,6 +228,141 @@ local function parse_team_message(message)
     return team_id, chat_mode, string.sub(message, 5)
 end
 
+local function is_valid_chat_message(message)
+    return type(message) == "string"
+        and message ~= ""
+        and message:utf8len() <= MAX_CHAT_INPUT_LENGTH
+end
+
+local function is_chat_team(team_id)
+    return team_state.is_valid(team_id) and not team_state.is_waiting_team(team_id)
+end
+
+local function send_to_local_recipients(message_id, sender_userid, sender_name, team_id, message)
+    if TheWorld == nil or not TheWorld.ismastersim or not is_chat_team(team_id) then
+        return
+    end
+    if message_id ~= nil and message_id ~= "" and delivered_message_ids[message_id] then
+        return
+    end
+    if message_id ~= nil and message_id ~= "" then
+        delivered_message_ids[message_id] = true
+        delivered_message_order[#delivered_message_order + 1] = message_id
+        if #delivered_message_order > 128 then
+            local expired_id = table.remove(delivered_message_order, 1)
+            delivered_message_ids[expired_id] = nil
+        end
+    end
+
+    local rpc = CLIENT_MOD_RPC ~= nil
+        and CLIENT_MOD_RPC[RPC_NAMESPACE] ~= nil
+        and CLIENT_MOD_RPC[RPC_NAMESPACE][CLIENT_RPC_RECEIVE]
+        or nil
+    if rpc == nil then
+        return
+    end
+
+    for _, recipient in ipairs(AllPlayers or {}) do
+        if recipient:IsValid() and recipient.userid ~= nil then
+            local recipient_team = get_team_id(recipient)
+            if recipient_team == team_id or can_view_team_chat(recipient) then
+                SendModRPCToClient(
+                    rpc,
+                    recipient.userid,
+                    sender_userid or "",
+                    sender_name or "",
+                    team_id,
+                    message
+                )
+            end
+        end
+    end
+end
+
+local function forward_to_other_shards(message_id, sender_userid, sender_name, team_id, message)
+    if SendModRPCToShard == nil or GetShardModRPC == nil then
+        return
+    end
+
+    local rpc = GetShardModRPC(RPC_NAMESPACE, SHARD_RPC_FORWARD)
+    if rpc ~= nil then
+        SendModRPCToShard(rpc, nil, message_id, sender_userid or "", sender_name or "", team_id, message)
+    end
+end
+
+AddClientModRPCHandler(RPC_NAMESPACE, CLIENT_RPC_RECEIVE, function(sender_userid, sender_name, team_id, message)
+    team_id = team_state.normalize(team_id)
+    if ChatHistory == nil or not is_chat_team(team_id) or not is_valid_chat_message(message) then
+        return
+    end
+
+    local encoded = TEAM_CHAT_PREFIX .. tostring(team_id) .. "w" .. message
+    local netid = TheNet ~= nil and TheNet:GetNetIdForUser(sender_userid) or nil
+    local colour = team_id == 1 and { 1, 0, 0, 1 }
+        or team_id == 2 and { 25 / 255, 88 / 255, 1, 1 }
+        or { 1, 1, 1, 1 }
+
+    directed_team_message = true
+    local ok, error_message = pcall(
+        ChatHistory.AddToHistory,
+        ChatHistory,
+        ChatTypes.Message,
+        sender_userid,
+        netid,
+        sender_name,
+        encoded,
+        colour,
+        "default",
+        false,
+        false,
+        TEXT_FILTER_CTX_CHAT
+    )
+    directed_team_message = false
+    if not ok then
+        debug_log.error("team-chat", "client display failed", tostring(error_message))
+    end
+end)
+
+AddShardModRPCHandler(RPC_NAMESPACE, SHARD_RPC_FORWARD, function(_, message_id, sender_userid, sender_name, team_id, message)
+    team_id = team_state.normalize(team_id)
+    if type(message_id) ~= "string"
+        or message_id == ""
+        or not is_chat_team(team_id)
+        or not is_valid_chat_message(message) then
+        return
+    end
+    send_to_local_recipients(message_id, sender_userid, sender_name, team_id, message)
+end)
+
+AddModRPCHandler(RPC_NAMESPACE, MOD_RPC_SEND, function(player, message)
+    if player == nil or player.userid == nil or not is_valid_chat_message(message) then
+        return
+    end
+
+    local team_id = get_team_id(player)
+    if not is_chat_team(team_id) then
+        return
+    end
+
+    next_message_sequence = next_message_sequence + 1
+    local message_id = table.concat({
+        tostring(player.userid),
+        tostring(GetTime()),
+        tostring(next_message_sequence),
+    }, ":")
+    send_to_local_recipients(message_id, player.userid, player.name, team_id, message)
+    forward_to_other_shards(message_id, player.userid, player.name, team_id, message)
+end)
+
+local function send_team_message(message)
+    local rpc = GetModRPC ~= nil and GetModRPC(RPC_NAMESPACE, MOD_RPC_SEND) or nil
+    if rpc ~= nil then
+        SendModRPCToServer(rpc, message)
+        return true
+    end
+    return false
+end
+
 local function install_chat_input()
     local ChatInputScreen = require("screens/chatinputscreen")
     local UserCommands = require("usercommands")
@@ -246,12 +390,11 @@ local function install_chat_input()
             local encoded = TEAM_CHAT_PREFIX .. team_id
             if self.whisper then
                 self.whisper = false
-                encoded = encoded .. "w"
-            else
-                encoded = encoded .. "o"
+                send_team_message(message)
+                return
             end
 
-            TheNet:Say(encoded .. message, self.whisper)
+            TheNet:Say(encoded .. "o" .. message, false)
         end
     end
 end
@@ -264,7 +407,7 @@ local function install_chat_history()
     local AddToHistory = ChatHistory.AddToHistory
     function ChatHistory:AddToHistory(chat_type, sender_userid, sender_netid, sender_name, message, colour, icondata, whisper, localonly, text_filter_context)
         local team_id, chat_mode = parse_team_message(message)
-        if team_id ~= nil and chat_mode == "w" and ThePlayer ~= nil then
+        if team_id ~= nil and chat_mode == "w" and ThePlayer ~= nil and not directed_team_message then
             if not can_see_team_message(ThePlayer, team_id) then
                 return
             end

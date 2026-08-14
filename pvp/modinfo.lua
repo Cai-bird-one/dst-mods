@@ -25,7 +25,7 @@ description =
     "\n\n【连接提示】" ..
     "\n- 当前为测试版本；更新后请完整重启游戏和服务器"
 author = "乔尔,冷泠,蔡鸟bird"
-version = "1.0beta.23"
+version = "1.0beta.24"
 priority = 9007199254740991
 
 forumthread = ""
@@ -192,6 +192,16 @@ configuration_options =
             {description = "60 秒", data = 60, hover = ""},
         },
         default = 30,
+    },
+    {
+        name = "ADMIN_CLIENT_MODS",
+        label = "管理员本地 MOD",
+        hover = "开启后，管理员进入服务器时会重新加载自己原本启用的客户端 MOD；关闭后所有人的客户端 MOD 都由原版禁用。",
+        options = {
+            {description = "开启", data = true, hover = ""},
+            {description = "关闭", data = false, hover = ""},
+        },
+        default = true,
     },
     {
         name = "AUTO_WALKING_STICK",

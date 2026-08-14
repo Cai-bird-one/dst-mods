@@ -23,7 +23,7 @@
 | `team-apply` | 玩家 `pending/ready` 解析和队伍效果应用 |
 | `team-fx` | 红蓝队脚下队伍圈生成 |
 | `observer-camera` | OB 启用、地图获取、传送 |
-| `client-mod-check` | 本地 MOD 阻止、临时禁用和高优先级违规 |
+| `client-mod-check` | 原生客户端 MOD 禁用、管理员追加加载和加载结果 |
 | `lobby` | 预选倒计时开始、结束和准备状态输出 |
 | `match` | 比赛参与者、结算、重生世界和异常 |
 | `wx78-qa-guard` | WX-78 快捷宣告兼容保护异常 |
@@ -83,6 +83,7 @@
 - 确认 `ChatHistory:AddToHistory` 参数签名没有被其他 MOD 覆盖。
 - 队伍消息必须由内部 `/d` 前缀编码，普通消息不要手工加前缀。
 - 暂停不应阻止队伍 netvar dirty 事件和客户端 UI 更新。
+- `[T]` 队伍消息由服务端按权威队伍通过 Client RPC 定向发送，同队成员和 OB 可接收；敌方客户端的 `client_chat_log.txt` 不应出现该消息。`[A]` 仍是主动发送的全局消息。
 
 ## 大厅未选角色导致崩溃
 
@@ -103,8 +104,9 @@
 
 ## 客户端 MOD 检查
 
-- 普通本地 MOD 无提示消失: 这是低优先级 client-only MOD 被静默临时禁用。
-- 出现高优先级警告: 对方 MOD 优先级大于等于 `9007199254740991`，会触发离开和 20 秒封禁。
-- 管理员也被拦截: 检查客户端建立 HUD 时 client table 的 `admin` 是否已经同步。
-- 客户端扫描会输出每个本地 MOD 的名称、目录、优先级以及 `blocked`、`enabled`、`temp_disabled`、`enabled_any` 状态。
-- 触发高优先级封禁时，服务端会输出玩家和客户端上报的违规 MOD 摘要；该内容用于排障，不作为独立可信证据。
+- 普通玩家本地 MOD 未加载: 检查服务器日志是否有 `native client mods disabled`，客户端应显示 `temp_disabled=true`、`loaded=false`。
+- 管理员本地 MOD 未恢复: 检查是否输出 `administrator reload skipped`；这表示 Bird PVP 加载时管理员身份尚不可用。
+- 日志显示 `disabled by configuration`: `ADMIN_CLIENT_MODS` 已关闭，属于预期行为。
+- 管理员追加成功: 应依次看到 `administrator client mod queued`、`administrator client mods registered`，进入 HUD 后对应 MOD 应为 `loaded=true`、`admin_reloaded=true`。
+- 出现 `administrator registration failed`: 保存完整客户端日志，重点检查 `kleiregistermods` 错误；该次连接会撤销新增环境，不继续加载半初始化 MOD。
+- 原生“客户端 MOD 已禁用”弹窗发生在 Bird PVP 加载前，属于预期行为。
