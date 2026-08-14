@@ -14,27 +14,28 @@ end
 _G.KnownModIndex:DisableClientMods(true)
 log("native client mods disabled", "injected=true")
 
-local function is_current_user_admin()
-    if _G.TheNet == nil then
+local function is_current_user_admin(net)
+    net = net or _G.rawget(_G, "TheNet")
+    if net == nil then
         return false
     end
 
-    if _G.TheNet.GetIsServerAdmin ~= nil then
-        local ok_admin, is_admin = _G.pcall(_G.TheNet.GetIsServerAdmin, _G.TheNet)
+    if net.GetIsServerAdmin ~= nil then
+        local ok_admin, is_admin = _G.pcall(net.GetIsServerAdmin, net)
         if ok_admin and is_admin == true then
             return true
         end
     end
 
     local ok_userid, userid = _G.pcall(function()
-        return _G.TheNet:GetUserID()
+        return net:GetUserID()
     end)
     if not ok_userid or userid == nil or userid == "" then
         return false
     end
 
     local ok_client, client = _G.pcall(function()
-        return _G.TheNet:GetClientTableForUser(userid)
+        return net:GetClientTableForUser(userid)
     end)
     return ok_client and client ~= nil and client.admin == true
 end
@@ -108,11 +109,13 @@ local function remove_added_environments(added)
 end
 
 local function append_admin_client_mods()
-    if _G.TheNet == nil
-        or not _G.TheNet:GetIsClient()
-        or _G.TheNet:GetIsServer()
-        or _G.ModManager == nil
-        or _G.ModManager.worldgen
+    local net = _G.rawget(_G, "TheNet")
+    local manager = _G.rawget(_G, "ModManager")
+    if net == nil
+        or not net:GetIsClient()
+        or net:GetIsServer()
+        or manager == nil
+        or manager.worldgen
     then
         return
     end
@@ -122,7 +125,7 @@ local function append_admin_client_mods()
         return
     end
 
-    if not is_current_user_admin() then
+    if not is_current_user_admin(net) then
         log("administrator reload skipped", "admin identity unavailable or false")
         return
     end

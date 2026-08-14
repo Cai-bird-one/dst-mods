@@ -25,7 +25,7 @@ description =
     "\n\n【连接提示】" ..
     "\n- 当前为测试版本；更新后请完整重启游戏和服务器"
 author = "乔尔,冷泠,蔡鸟bird"
-version = "1.0beta.25"
+version = "1.0beta.26"
 priority = 9007199254740991
 
 forumthread = ""
