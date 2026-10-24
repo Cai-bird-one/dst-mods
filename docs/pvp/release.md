@@ -12,6 +12,16 @@
 
 当前动画源包位于 [`tools/pvp/generated_assets/`](../../tools/pvp/generated_assets/)，发布用动画包位于 [`pvp/anim/`](../../pvp/anim/)。
 
+## 现有创意工坊条目与上传方式
+
+- PVP 条目为 [`3752181777`](https://steamcommunity.com/sharedfiles/filedetails/?id=3752181777)，名称为 `【月落繁星】饥荒pvp专用mod（测试版）`。更新此条目时选择 Edit，不新建条目。
+- 本机已安装官方 `Don't Starve Mod Tools/ModUploader.exe`，可使用已登录的 Steam 会话上传。
+- 官方上传器保存的目录对应关系在 `HKCU\Software\Klei\Don't Starve Mod Uploader\MRU\3752181777` 的 `DataFolder`；当前指向本工作区的 `pvp/`。每次上传仍须核对条目链接和实际目录。
+- 先递增 `pvp/modinfo.lua` 的版本，再在更新对话框启用 `Update Data`，填写 Patch Notes。官方工具会从模组信息读取版本标签；不需改封面或工坊说明时保持对应更新选项关闭，不启用 `Upload redundant files`。
+- 官方回执在 `%LOCALAPPDATA%\Don't Starve Mod Uploader\ModUploader.log`。先确认本次 `CopyToTempDir` 的源目录，再确认目标 ID 的 `EResult 1` 与 `Publish complete`；最后 Refresh，核对服务器返回的新版本标签。单纯点击 Publish 不算上传完成。
+
+2026-10-24 已按此流程发布 `1.0beta.27`（修复提交 `f7cf456`）。上传回执为 `EResult 1, 00000000dfa5c011`，其中十六进制 ID 对应 `3752181777`；刷新列表确认 `version:1.0beta.27`。这证明工坊接受了更新，未进行独立重新下载或真实联机验证。
+
 ## `pvp/` 允许内容
 
 - `modinfo.lua`、`modmain.lua`、`modworldgenmain.lua`
