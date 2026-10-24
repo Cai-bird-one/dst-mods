@@ -9,11 +9,22 @@ local function install_staff_tornado_rule()
         end
 
         local CastSpell = inst.components.spellcaster.CastSpell
-        inst.components.spellcaster.CastSpell = function(self, caster, ...)
+        inst.components.spellcaster.CastSpell = function(self, target, pos, doer, ...)
+            -- CastSpell receives the target first. Older/custom callers may
+            -- omit doer, so resolve the staff's owner only in that case.
+            local caster = doer
+            if caster == nil then
+                local inventoryitem = inst.components.inventoryitem
+                if inventoryitem ~= nil then
+                    caster = inventoryitem.GetGrandOwner ~= nil
+                        and inventoryitem:GetGrandOwner()
+                        or inventoryitem.owner
+                end
+            end
             if caster ~= nil and caster:HasTag("player") and TheWorld.state.cycles < 1 then
                 return
             end
-            return CastSpell(self, caster, ...)
+            return CastSpell(self, target, pos, doer, ...)
         end
     end)
 end

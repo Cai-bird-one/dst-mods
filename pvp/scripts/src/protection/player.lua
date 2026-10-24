@@ -55,7 +55,12 @@ local function is_blocked_first_day_attack(target, attacker, weapon)
             or has_hand_item(attacker)
     end
 
+    -- Tornado damage names the tornado itself as the attacker. Preserve the
+    -- original player attribution even if its caster has since disconnected.
+    local windstaff_caster = attacker.WINDSTAFF_CASTER
     return is_player_follower(attacker)
+        or attacker.WINDSTAFF_CASTER_ISPLAYER == true
+        or (windstaff_caster ~= nil and windstaff_caster:HasTag("player"))
 end
 
 local function install_health_guard()

@@ -411,16 +411,31 @@ local function PatchCombatComponent(combat)
         return OriginalSetTarget(self, target)
     end
 
-    local OriginalGetAttacked = combat.GetAttacked
+    -- Current DST attacks call the internal method directly. Older builds use
+    -- the public method for both damage rules and health-bar hit triggers.
+    local method = combat.GetAttacked_Internal ~= nil and "GetAttacked_Internal" or "GetAttacked"
+    local OriginalGetAttacked = combat[method]
 
-    combat.GetAttacked = function(self, attacker, damage, weapon, stimuli)
+    combat[method] = function(self, attacker, damage, weapon, stimuli, spdamage, ...)
+        -- PVP disables planar damage. Copy before filtering because a damage
+        -- table can be shared by multiple targets; keep other special types.
+        if spdamage ~= nil and spdamage.planar ~= nil then
+            local filtered = {}
+            for damage_type, amount in pairs(spdamage) do
+                if damage_type ~= "planar" then
+                    filtered[damage_type] = amount
+                end
+            end
+            spdamage = next(filtered) ~= nil and filtered or nil
+        end
+
         ShowHealthBar(self.inst)
 
         if attacker and attacker.components.health then
             ShowHealthBar(attacker)
         end
 
-        return OriginalGetAttacked(self, attacker, damage, weapon, stimuli)
+        return OriginalGetAttacked(self, attacker, damage, weapon, stimuli, spdamage, ...)
     end
 end
 

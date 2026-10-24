@@ -405,7 +405,7 @@ local function install_chat_history()
     end
 
     local AddToHistory = ChatHistory.AddToHistory
-    function ChatHistory:AddToHistory(chat_type, sender_userid, sender_netid, sender_name, message, colour, icondata, whisper, localonly, text_filter_context)
+    function ChatHistory:AddToHistory(chat_type, sender_userid, sender_netid, sender_name, message, colour, icondata, whisper, localonly, text_filter_context, ...)
         local team_id, chat_mode = parse_team_message(message)
         if team_id ~= nil and chat_mode == "w" and ThePlayer ~= nil and not directed_team_message then
             if not can_see_team_message(ThePlayer, team_id) then
@@ -413,7 +413,7 @@ local function install_chat_history()
             end
         end
 
-        return AddToHistory(self, chat_type, sender_userid, sender_netid, sender_name, message, colour, icondata, whisper, localonly, text_filter_context)
+        return AddToHistory(self, chat_type, sender_userid, sender_netid, sender_name, message, colour, icondata, whisper, localonly, text_filter_context, ...)
     end
 
     local GenerateChatMessage = ChatHistory.GenerateChatMessage

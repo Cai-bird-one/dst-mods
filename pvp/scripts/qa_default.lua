@@ -271,7 +271,7 @@ GLOBAL.STRINGS.DEFAULT_NOMU_QA = {
     },
     ENERGY = {
         FORMATS = {
-            DEFAULT = '(电量: {CURRENT}/{MAX}，已占用电量：{USED}) {MESSAGE}',
+            DEFAULT = '(电量: {CURRENT}/{MAX}，已占用槽位：{USED}) {MESSAGE}',
             CHIP = '电路装载：{NUM} {ITEM}。',
         },
         MAPPINGS = {
@@ -283,7 +283,8 @@ GLOBAL.STRINGS.DEFAULT_NOMU_QA = {
                     THREE = '电量：高',
                     FOUR = '电量：较高',
                     FIVE = '电量：充足',
-                    SIX = '电量：满格'
+                    SIX = '电量：满格',
+                    SEVEN = '电量：满格'
                 }
             }
         }

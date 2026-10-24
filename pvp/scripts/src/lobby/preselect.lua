@@ -9,6 +9,8 @@ local START_PAUSE_DURATIONS = {
     [40] = true,
     [50] = true,
     [60] = true,
+    [90] = true,
+    [120] = true,
 }
 
 local function IsRegularLobby()

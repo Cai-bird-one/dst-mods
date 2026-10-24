@@ -26,7 +26,6 @@
 | `client-mod-check` | 原生客户端 MOD 禁用、管理员追加加载和加载结果 |
 | `lobby` | 预选倒计时开始、结束和准备状态输出 |
 | `match` | 比赛参与者、结算、重生世界和异常 |
-| `wx78-qa-guard` | WX-78 快捷宣告兼容保护异常 |
 
 排查队伍问题时，应同时取得地上服务端日志、地下服务端日志和出问题玩家的客户端日志。
 
@@ -39,6 +38,18 @@
 - **证据**：本机 `data/databundles/scripts.zip` 内 `scripts/components/combat.lua` 的 `GetAttacked`、`GetAttacked_Internal`、`DoAttack`、`DoAreaAttack`；`scripts/components/projectile.lua` 的命中处理也调用 `DoAttack`。受击状态图与免伤入口是两条独立保护，不能仅凭无僵直判定免伤已经生效。
 
 在仓库根目录执行 `python tools/pvp/tests/first_day_protection.py`。若 Lupa 安装在临时目录，加 `--lupa-path <目录>`；需要同时重现旧问题时加 `--baseline-ref 836fccb`。测试不启动游戏或修改存档。
+
+针对其他 Hook 的后续核对见 [DST 759671 兼容性审计](compatibility-759671.md)，其中记录位面屏蔽、血条、WX-78、旋风杖、聊天静默参数和开局等待配置的修复与验证；这些后续修复从 `1.0beta.28` 开始提供。
+
+## 禁用的位面伤害重新生效
+
+- **现象**：规则要求移除位面伤害，但新版普通攻击、范围攻击仍附带位面伤害；公开 `GetAttacked` 调用却能正常屏蔽。
+- **原因**：[`health_bar.lua`](../../pvp/scripts/src/ui/health_bar.lua) 旧包装通过不传 `spdamage` 来屏蔽伤害，新版内部结算入口绕过了包装，也绕过了同处的血条触发。
+- **处理**：优先包装 `GetAttacked_Internal`，旧构建回退到公开入口；仅移除伤害表副本中的 `planar`，过滤后无其他类型则传 `nil`。保留普通伤害、其他特殊类型、`from_doattack` 等尾参和原返回值，同时恢复内部入口的血条触发。Master、Caves 的全部服务端 combat 组件生效，客户端不安装此包装。
+- **验证**：[`planar_damage.py`](../../tools/pvp/tests/planar_damage.py) 加载本机原版战斗方法、完整血条及玩家保护脚本。`2de57b9` 基线的 16 项断言复现泄漏；修复后 527 项断言通过，覆盖公开/内部/普攻/两种范围入口、玩家与生物、混合和纯位面伤害、共享表、其他特殊类型、尾参和返回值、旧入口回退、客户端排除、首日保护叠加、无扣血时血条触发、重定向及反伤。另有原先的第一天保护 214 项断言继续通过。这些均为 Lua 5.1 隔离模拟，未做真实客户端联机验证。
+- **证据**：本机 `759671` 的 `components/combat.lua`、`components/spdamageutil.lua`。原版特殊伤害表支持第三方扩展，不能简单丢弃整个 `spdamage`；也不能直接修改可能被多个目标共用的输入表。
+
+运行 `python tools/pvp/tests/planar_damage.py --baseline-ref 2de57b9`，Lupa 位于临时目录时同样加 `--lupa-path <目录>`。重新启动加载本地修改后，应在地上和地下确认混合攻击只扣普通伤害、纯位面不扣血，以及 OB 血条正常刷新。
 
 ## 队伍未生效
 
