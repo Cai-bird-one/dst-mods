@@ -30,6 +30,16 @@
 
 排查队伍问题时，应同时取得地上服务端日志、地下服务端日志和出问题玩家的客户端日志。
 
+## 第一天武器打人掉血，但没有僵直
+
+- **现象**：第一天持武器攻击玩家仍会扣血，受击动作却被挡住。规则应为玩家之间仅允许真正空手的人形拳击；持物品、变身攻击和玩家随从攻击仍受第一天保护限制。
+- **原因**：本机 DST 构建 `759671` 的 `combat:GetAttacked` 已改为转发到 `GetAttacked_Internal`，而 `DoAttack`、`DoAreaAttack` 直接调用内部入口。旧保护只包装公开的 `GetAttacked`，普通攻击因此绕过免伤；独立的 `wilson` 状态图 `attacked` 保护继续生效，形成“有伤害、没僵直”。
+- **处理**：[`protection/player.lua`](../../pvp/scripts/src/protection/player.lua) 在服务端玩家初始化时优先包装 `GetAttacked_Internal`；旧构建无此方法时回退到 `GetAttacked`。在扣血、护甲损耗和受击事件之前拦截，并完整透传未拦截攻击的 `spdamage`、`from_doattack` 等参数。继续使用世界 `cycles < 1` 判定，第二天自动恢复；Master 与 Caves 均注册此保护。
+- **验证**：[`first_day_protection.py`](../../tools/pvp/tests/first_day_protection.py) 通过 Python + Lupa 的 Lua 5.1 运行本机 ZIP 中的原版战斗方法及完整保护脚本，使用桩对象模拟引擎和原状态图反应。修复前 `836fccb` 基线的 11 项断言复现扣血但无受击动作，修复后 214 项断言通过，覆盖普攻、范围、公开/内部入口、拳头、手持工具、变身、随从、第二天、野怪、OB、参数透传、旧入口回退及客户端不装服务端 Hook。真实客户端未实测；重启加载修改后，仍需在地上、地下验证第一天武器攻击无伤害无僵直、拳头正常，以及第二天武器伤害恢复。
+- **证据**：本机 `data/databundles/scripts.zip` 内 `scripts/components/combat.lua` 的 `GetAttacked`、`GetAttacked_Internal`、`DoAttack`、`DoAreaAttack`；`scripts/components/projectile.lua` 的命中处理也调用 `DoAttack`。受击状态图与免伤入口是两条独立保护，不能仅凭无僵直判定免伤已经生效。
+
+在仓库根目录执行 `python tools/pvp/tests/first_day_protection.py`。若 Lupa 安装在临时目录，加 `--lupa-path <目录>`；需要同时重现旧问题时加 `--baseline-ref 836fccb`。测试不启动游戏或修改存档。
+
 ## 队伍未生效
 
 按顺序查找:

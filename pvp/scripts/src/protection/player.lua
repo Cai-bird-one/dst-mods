@@ -169,8 +169,13 @@ local function install_player_guards()
         end
 
         if inst.components.combat ~= nil then
-            local GetAttacked = inst.components.combat.GetAttacked
-            inst.components.combat.GetAttacked = function(self, attacker, damage, weapon, stimuli, ...)
+            local combat = inst.components.combat
+            -- Newer DST builds route DoAttack/DoAreaAttack straight to the
+            -- internal method; GetAttacked is only a public forwarding entry.
+            -- Guard the shared damage path, with a fallback for older builds.
+            local method = combat.GetAttacked_Internal ~= nil and "GetAttacked_Internal" or "GetAttacked"
+            local GetAttacked = combat[method]
+            combat[method] = function(self, attacker, damage, weapon, stimuli, ...)
                 if is_observer_camera(self.inst) then
                     return false
                 end
